@@ -2,8 +2,8 @@
 
   <!-- 顶部状态栏 -->
   <view class="status-bar" style="padding-top: {{statusBarHeight}}px;">
-    <view class="title">3D 换装模特</view>
-    <view class="hint">{{gender === 'male' ? '男性' : '女性'}} · {{clothed ? '已穿上衣' : '默认木偶'}} · 拖动旋转，双指缩放</view>
+    <view class="title">衣镜 · 3D 试衣</view>
+    <view class="hint">{{gender === 'male' ? '男性' : '女性'}} · {{clothed ? '已穿上衣' : '白T黑裤'}} · 左右拖动旋转，双指缩放</view>
   </view>
 
   <!-- 3D 舞台 -->

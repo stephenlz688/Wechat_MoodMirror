@@ -7,6 +7,7 @@ install.log
 
 # 预览页临时浏览器配置
 preview/.edge-profile*/
+preview/.edge-p*/
 preview/.chrome-profile*/
 preview/shot-*.png
 

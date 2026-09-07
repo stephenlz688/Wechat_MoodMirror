@@ -1,226 +1,305 @@
 /**
- * model.js —— 3D 写实模特（GLB 模型加载 + 衣服贴图层）
- *
- * 功能：
- *  1. 加载 GLB 格式的写实人体模型（男/女），自动归一化到合适尺寸
- *  2. 独立的衣服贴图层（躯干 + 袖子），不依赖底层模型 UV
- *  3. 性别切换 = 切换男/女模型
- *  4. 上传衣服图片 → 纹理贴到衣服层
- *
- * 模型来源：支持任意标准人体 GLB 模型（如 Ready Player Me、Mixamo 等）。
+ * model.js —— 程序化仿真人体模特
+ *  - 比例协调的男/女人体（头/躯干/四肢/关节平滑过渡）
+ *  - 默认身着白 T 恤 + 黑裤子
+ *  - 上传衣服图片后替换 T 恤纹理（躯干 + 上臂）
+ *  - 仅水平旋转（由外部控制 group.rotation.y）
  */
 
-import { registerGLTFLoader } from './gltf-loader.js'
+// 男性体型参数（总高约 1.7m，脚底 y≈0，各部位边界重叠消除间隙）
+const MALE = {
+  head: { r: 0.108, scaleY: 1.15, y: 1.58 },
+  neck: { rTop: 0.048, rBot: 0.052, h: 0.08, y: 1.42 },
+  // 上躯干（T恤）：Lathe 点 [半径, 局部Y]，局部Y 0→h
+  upperTorso: {
+    points: [[0.155, 0.38], [0.195, 0.28], [0.19, 0.16], [0.17, 0.0]],
+    y: 1.11, h: 0.38
+  },
+  // 下躯干（皮肤）：腰到胯
+  lowerTorso: {
+    points: [[0.17, 0.18], [0.155, 0.09], [0.17, 0.0]],
+    y: 0.96, h: 0.18
+  },
+  pelvis: { r: 0.155, scaleY: 0.55, y: 0.87 },
+  upperArm: { rTop: 0.055, rBot: 0.045, h: 0.28, x: 0.21, y: 1.22 },
+  elbow: { r: 0.05, x: 0.21, y: 1.07 },
+  forearm: { rTop: 0.043, rBot: 0.035, h: 0.26, x: 0.21, y: 0.93 },
+  hand: { r: 0.047, scaleY: 1.3, x: 0.21, y: 0.79 },
+  thigh: { rTop: 0.072, rBot: 0.058, h: 0.38, x: 0.09, y: 0.62 },
+  knee: { r: 0.057, x: 0.09, y: 0.43 },
+  calf: { rTop: 0.052, rBot: 0.037, h: 0.38, x: 0.09, y: 0.24 },
+  foot: { w: 0.075, h: 0.05, d: 0.14, x: 0.09, y: 0.045, z: 0.03 },
+  shoulder: { r: 0.072, x: 0.185, y: 1.36 },
+  chest: null
+}
 
-export const GENDER_MALE = 'male'
-export const GENDER_FEMALE = 'female'
+// 女性体型参数
+const FEMALE = {
+  head: { r: 0.10, scaleY: 1.12, y: 1.58 },
+  neck: { rTop: 0.043, rBot: 0.048, h: 0.08, y: 1.42 },
+  upperTorso: {
+    points: [[0.13, 0.38], [0.17, 0.26], [0.15, 0.14], [0.13, 0.0]],
+    y: 1.11, h: 0.38
+  },
+  lowerTorso: {
+    points: [[0.13, 0.18], [0.14, 0.09], [0.175, 0.0]],
+    y: 0.96, h: 0.18
+  },
+  pelvis: { r: 0.165, scaleY: 0.55, y: 0.87 },
+  upperArm: { rTop: 0.048, rBot: 0.04, h: 0.27, x: 0.175, y: 1.22 },
+  elbow: { r: 0.044, x: 0.175, y: 1.07 },
+  forearm: { rTop: 0.038, rBot: 0.031, h: 0.25, x: 0.175, y: 0.93 },
+  hand: { r: 0.041, scaleY: 1.3, x: 0.175, y: 0.79 },
+  thigh: { rTop: 0.078, rBot: 0.06, h: 0.38, x: 0.085, y: 0.62 },
+  knee: { r: 0.055, x: 0.085, y: 0.43 },
+  calf: { rTop: 0.05, rBot: 0.035, h: 0.38, x: 0.085, y: 0.24 },
+  foot: { w: 0.068, h: 0.048, d: 0.13, x: 0.085, y: 0.045, z: 0.03 },
+  shoulder: { r: 0.062, x: 0.155, y: 1.36 },
+  chest: { r: 0.072, x: 0.08, y: 1.28, z: 0.105 }
+}
+
+const SKIN_COLOR = 0xd4a574
+const SHIRT_COLOR = 0xffffff
+const PANTS_COLOR = 0x1a1a1a
+const HAIR_COLOR = 0x2a1a0a
 
 export class Mannequin {
-  /**
-   * @param {object} THREE - createScopedThreejs(canvas) 返回的 three 作用域
-   * @param {object} scene
-   */
   constructor(THREE, scene) {
     this.T = THREE
     this.scene = scene
+    this.gender = 'male'
     this.group = new THREE.Group()
-    scene.add(this.group)
-
-    // 注册 GLTFLoader 到当前 THREE 作用域
-    registerGLTFLoader(THREE)
-
-    // 状态
-    this.model = null
-    this.loaded = false
-    this.gender = GENDER_MALE
-    this.clothGroup = null
-    this.clothMeshes = []
-    this.clothMat = null
-
-    // 衣服层默认材质（未穿衣时的木偶色占位，默认隐藏）
-    this.clothBaseMat = new THREE.MeshStandardMaterial({
-      color: 0xd9d1c0, roughness: 0.85, metalness: 0.05
-    })
-  }
-
-  // -------------------------------------------------------------------------
-  // 模型加载（浏览器环境：直接传 URL）
-  // -------------------------------------------------------------------------
-  loadModel(url, onLoad) {
-    const loader = new this.T.GLTFLoader()
-    loader.load(
-      url,
-      (gltf) => this._onModelLoaded(gltf, onLoad),
-      undefined,
-      (err) => {
-        console.error('[Mannequin] 模型加载失败:', url, err)
-      }
-    )
-  }
-
-  /**
-   * 从 ArrayBuffer 加载（小程序环境：wx.getFileSystemManager().readFile 后调用）
-   * @param {ArrayBuffer} buffer
-   * @param {Function} onLoad
-   */
-  loadFromBuffer(buffer, onLoad) {
-    const loader = new this.T.GLTFLoader()
-    loader.parse(
-      buffer,
-      '',
-      (gltf) => this._onModelLoaded(gltf, onLoad),
-      (err) => {
-        console.error('[Mannequin] 模型解析失败:', err)
-      }
-    )
-  }
-
-  _onModelLoaded(gltf, onLoad) {
-    const T = this.T
-
-    // 移除旧模型
-    if (this.model) {
-      this.group.remove(this.model)
-      this.model.traverse((obj) => {
-        if (obj.isMesh) {
-          obj.geometry.dispose()
-          if (obj.material) {
-            if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose())
-            else obj.material.dispose()
-          }
-        }
-      })
-    }
-
-    this.model = gltf.scene
-    this.group.add(this.model)
-
-    // 归一化：缩放到总高 1.7，脚底对齐 y=0，居中 x/z
-    const box = new T.Box3().setFromObject(this.model)
-    const size = new T.Vector3()
-    const center = new T.Vector3()
-    box.getSize(size)
-    box.getCenter(center)
-
-    const scale = 1.7 / size.y
-    this.model.scale.setScalar(scale)
-    this.model.position.x = -center.x * scale
-    this.model.position.y = -box.min.y * scale
-    this.model.position.z = -center.z * scale
-
-    // 开启阴影 + 关闭视锥剔除 + 统一皮肤色材质
-    // （部分 GLB 模型原始材质为全黑或全金属，在无环境贴图时不可见）
-    const skinMat = new T.MeshStandardMaterial({
-      color: 0xd4a574,
-      metalness: 0.1,
-      roughness: 0.7
-    })
-    this.model.traverse((obj) => {
-      if (obj.isMesh) {
-        obj.castShadow = true
-        obj.receiveShadow = true
-        obj.frustumCulled = false
-        obj.material = skinMat
-      }
-    })
-
-    // 创建衣服贴图层
-    this._createClothLayer()
-
+    this.scene.add(this.group)
+    this.clothTexture = null
+    this.shirtMat = null
     this.loaded = true
-    if (onLoad) onLoad()
+    this._build()
   }
 
-  // -------------------------------------------------------------------------
-  // 衣服贴图层（独立于底层模型，按标准人体比例定位）
-  // 模型归一化后：总高 1.7，脚底 y=0，头顶 y=1.7
-  // -------------------------------------------------------------------------
-  _createClothLayer() {
-    const T = this.T
-
-    // 移除旧衣服层
-    if (this.clothGroup) {
-      this.group.remove(this.clothGroup)
+  // -----------------------------------------------------------------------
+  // 构建人体
+  // -----------------------------------------------------------------------
+  _build() {
+    // 清除旧模型
+    while (this.group.children.length > 0) {
+      const c = this.group.children[0]
+      this.group.remove(c)
+      if (c.geometry) c.geometry.dispose()
     }
 
-    this.clothGroup = new T.Group()
-    this.clothMeshes = []
+    const T = this.T
+    const p = this.gender === 'female' ? FEMALE : MALE
 
-    // ---- 躯干（上衣主体）----
-    const torso = new T.Mesh(
-      new T.CylinderGeometry(0.215, 0.175, 0.56, 24),
-      this.clothBaseMat
-    )
-    torso.position.set(0, 1.06, 0)
-    this.clothGroup.add(torso)
-    this.clothMeshes.push(torso)
+    // 材质
+    const skinMat = new T.MeshStandardMaterial({ color: SKIN_COLOR, roughness: 0.75, metalness: 0.05 })
+    this.shirtMat = new T.MeshStandardMaterial({ color: SHIRT_COLOR, roughness: 0.85, metalness: 0.0 })
+    const pantsMat = new T.MeshStandardMaterial({ color: PANTS_COLOR, roughness: 0.8, metalness: 0.05 })
+    const hairMat = new T.MeshStandardMaterial({ color: HAIR_COLOR, roughness: 0.9, metalness: 0.0 })
 
-    // ---- 袖子（左右上臂）----
-    ;[-1, 1].forEach((side) => {
-      const sleeve = new T.Mesh(
-        new T.CylinderGeometry(0.072, 0.06, 0.34, 16),
-        this.clothBaseMat
-      )
-      sleeve.position.set(side * 0.245, 1.02, 0)
-      sleeve.rotation.z = -side * 0.12
-      this.clothGroup.add(sleeve)
-      this.clothMeshes.push(sleeve)
-    })
+    // 如果之前有衣服纹理，应用到新T恤材质
+    if (this.clothTexture) {
+      this.shirtMat.map = this.clothTexture
+      this.shirtMat.color.setHex(0xffffff)
+      this.shirtMat.needsUpdate = true
+    }
 
-    // 默认隐藏衣服层（未穿衣状态）
-    this.clothGroup.visible = false
-    this.group.add(this.clothGroup)
+    const add = (mesh) => {
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      this.group.add(mesh)
+      return mesh
+    }
+
+    // ---- 头 ----
+    const head = add(new T.Mesh(new T.SphereGeometry(p.head.r, 24, 18), skinMat))
+    head.scale.y = p.head.scaleY
+    head.position.y = p.head.y
+    // 头发（头顶半球）
+    const hair = add(new T.Mesh(
+      new T.SphereGeometry(p.head.r * 1.04, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      hairMat
+    ))
+    hair.scale.y = p.head.scaleY
+    hair.position.y = p.head.y + p.head.r * 0.15
+    // 鼻子
+    const nose = add(new T.Mesh(new T.ConeGeometry(0.018, 0.04, 8), skinMat))
+    nose.rotation.x = Math.PI / 2
+    nose.position.set(0, p.head.y - 0.01, p.head.r * 0.95)
+
+    // ---- 脖子 ----
+    const neck = add(new T.Mesh(
+      new T.CylinderGeometry(p.neck.rTop, p.neck.rBot, p.neck.h, 12),
+      skinMat
+    ))
+    neck.position.y = p.neck.y
+
+    // ---- 上躯干（T恤）----
+    const upperTorso = add(new T.Mesh(
+      this._lathe(p.upperTorso.points),
+      this.shirtMat
+    ))
+    upperTorso.position.y = p.upperTorso.y
+
+    // ---- 下躯干（皮肤）----
+    const lowerTorso = add(new T.Mesh(
+      this._lathe(p.lowerTorso.points),
+      skinMat
+    ))
+    lowerTorso.position.y = p.lowerTorso.y
+
+    // ---- 胯部 ----
+    const pelvis = add(new T.Mesh(new T.SphereGeometry(p.pelvis.r, 20, 12), pantsMat))
+    pelvis.scale.y = p.pelvis.scaleY
+    pelvis.position.y = p.pelvis.y
+
+    // ---- 女性胸部 ----
+    if (p.chest) {
+      for (const side of [-1, 1]) {
+        const breast = add(new T.Mesh(
+          new T.SphereGeometry(p.chest.r, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6),
+          this.shirtMat
+        ))
+        breast.position.set(side * p.chest.x, p.chest.y, p.chest.z)
+        breast.rotation.x = -0.3
+      }
+    }
+
+    // ---- 肩关节球（T恤）----
+    for (const side of [-1, 1]) {
+      const shoulder = add(new T.Mesh(new T.SphereGeometry(p.shoulder.r, 16, 12), this.shirtMat))
+      shoulder.position.set(side * p.shoulder.x, p.shoulder.y, 0)
+    }
+
+    // ---- 上臂（T恤）----
+    for (const side of [-1, 1]) {
+      const arm = add(new T.Mesh(
+        new T.CylinderGeometry(p.upperArm.rTop, p.upperArm.rBot, p.upperArm.h, 12),
+        this.shirtMat
+      ))
+      arm.position.set(side * p.upperArm.x, p.upperArm.y, 0)
+    }
+
+    // ---- 肘关节（皮肤）----
+    for (const side of [-1, 1]) {
+      const elbow = add(new T.Mesh(new T.SphereGeometry(p.elbow.r, 12, 8), skinMat))
+      elbow.position.set(side * p.elbow.x, p.elbow.y, 0)
+    }
+
+    // ---- 前臂（皮肤）----
+    for (const side of [-1, 1]) {
+      const forearm = add(new T.Mesh(
+        new T.CylinderGeometry(p.forearm.rTop, p.forearm.rBot, p.forearm.h, 12),
+        skinMat
+      ))
+      forearm.position.set(side * p.forearm.x, p.forearm.y, 0)
+    }
+
+    // ---- 手（皮肤）----
+    for (const side of [-1, 1]) {
+      const hand = add(new T.Mesh(new T.SphereGeometry(p.hand.r, 12, 8), skinMat))
+      hand.scale.y = p.hand.scaleY
+      hand.position.set(side * p.hand.x, p.hand.y, 0)
+    }
+
+    // ---- 大腿（裤子）----
+    for (const side of [-1, 1]) {
+      const thigh = add(new T.Mesh(
+        new T.CylinderGeometry(p.thigh.rTop, p.thigh.rBot, p.thigh.h, 12),
+        pantsMat
+      ))
+      thigh.position.set(side * p.thigh.x, p.thigh.y, 0)
+    }
+
+    // ---- 膝关节（裤子）----
+    for (const side of [-1, 1]) {
+      const knee = add(new T.Mesh(new T.SphereGeometry(p.knee.r, 12, 8), pantsMat))
+      knee.position.set(side * p.knee.x, p.knee.y, 0)
+    }
+
+    // ---- 小腿（裤子）----
+    for (const side of [-1, 1]) {
+      const calf = add(new T.Mesh(
+        new T.CylinderGeometry(p.calf.rTop, p.calf.rBot, p.calf.h, 12),
+        pantsMat
+      ))
+      calf.position.set(side * p.calf.x, p.calf.y, 0)
+    }
+
+    // ---- 脚（皮肤）----
+    for (const side of [-1, 1]) {
+      const foot = add(new T.Mesh(
+        new T.BoxGeometry(p.foot.w, p.foot.h, p.foot.d),
+        skinMat
+      ))
+      foot.position.set(side * p.foot.x, p.foot.y, p.foot.z)
+    }
   }
 
-  // -------------------------------------------------------------------------
+  // 创建 LatheGeometry（从 [半径, Y] 点数组）
+  _lathe(points) {
+    const T = this.T
+    const pts = points.map(([r, y]) => new T.Vector2(r, y))
+    return new T.LatheGeometry(pts, 24)
+  }
+
+  // -----------------------------------------------------------------------
   // 性别切换
-  // -------------------------------------------------------------------------
-  setGender(gender, modelUrl, onLoad) {
-    if (gender !== GENDER_MALE && gender !== GENDER_FEMALE) return
+  // -----------------------------------------------------------------------
+  setGender(gender) {
+    if (gender === this.gender) return
     this.gender = gender
-    if (modelUrl) {
-      this.loaded = false
-      this.loadModel(modelUrl, onLoad)
-    }
+    this._build()
   }
 
-  // -------------------------------------------------------------------------
+  // -----------------------------------------------------------------------
   // 衣服贴图
-  // -------------------------------------------------------------------------
-  /**
-   * @param {object} texture - THREE.Texture（调用方负责设置 encoding）
-   */
+  // -----------------------------------------------------------------------
   setCloth(texture) {
-    const T = this.T
-    if (!this.clothMat) {
-      this.clothMat = new T.MeshStandardMaterial({
-        map: texture, roughness: 0.85, metalness: 0.05
-      })
-    } else {
-      this.clothMat.map = texture
-      this.clothMat.needsUpdate = true
+    this.clothTexture = texture
+    if (this.shirtMat) {
+      this.shirtMat.map = texture
+      this.shirtMat.color.setHex(0xffffff)
+      this.shirtMat.needsUpdate = true
     }
-    for (let i = 0; i < this.clothMeshes.length; i++) {
-      this.clothMeshes[i].material = this.clothMat
-    }
-    if (this.clothGroup) this.clothGroup.visible = true
   }
 
   clearCloth() {
-    if (this.clothGroup) this.clothGroup.visible = false
-    if (this.clothMat) {
-      this.clothMat.dispose()
-      this.clothMat = null
-    }
-    for (let i = 0; i < this.clothMeshes.length; i++) {
-      this.clothMeshes[i].material = this.clothBaseMat
+    this.clothTexture = null
+    if (this.shirtMat) {
+      this.shirtMat.map = null
+      this.shirtMat.color.setHex(SHIRT_COLOR)
+      this.shirtMat.needsUpdate = true
     }
   }
 
-  // -------------------------------------------------------------------------
-  // 每帧更新（预留：可加 idle 动画、呼吸等）
-  // -------------------------------------------------------------------------
+  get clothed() {
+    return this.clothTexture !== null
+  }
+
+  // -----------------------------------------------------------------------
+  // 每帧更新（可加呼吸微动）
+  // -----------------------------------------------------------------------
   update(dt) {
-    // 静态模特，暂无动画
+    // 轻微呼吸：胸腔缩放
+    const t = performance.now() * 0.001
+    const breathe = 1 + Math.sin(t * 1.5) * 0.008
+    this.group.children.forEach((c) => {
+      if (c.geometry && c.geometry.type === 'LatheGeometry' && c.position.y > 0.9) {
+        c.scale.x = breathe
+        c.scale.z = breathe
+      }
+    })
+  }
+
+  dispose() {
+    while (this.group.children.length > 0) {
+      const c = this.group.children[0]
+      this.group.remove(c)
+      if (c.geometry) c.geometry.dispose()
+    }
+    this.scene.remove(this.group)
   }
 }
+
+export const GENDER_MALE = 'male'
+export const GENDER_FEMALE = 'female'

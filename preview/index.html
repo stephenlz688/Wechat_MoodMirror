@@ -37,8 +37,8 @@
 <body>
 <div id="app">
   <header>
-    <h1>3D 换装模特</h1>
-    <p id="hint">男性 · 默认木偶 · 拖动旋转，滚轮/双指缩放</p>
+    <h1>衣镜 · 3D 试衣</h1>
+    <p id="hint">男性 · 白T黑裤 · 左右拖动旋转，滚轮缩放</p>
   </header>
   <div id="stage"><canvas id="gl"></canvas></div>
   <div class="panel">
@@ -93,23 +93,15 @@
   scene.add(fill)
   scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2a44, 0.5))
 
-  const MODEL_URLS = {
-    male: '../models/Xbot.glb',
-    female: '../models/Xbot.glb' // TODO: 替换为女性模型
-  }
-
   const mannequin = new Mannequin(THREE_, scene)
   mannequin.group.rotation.y = 0.3
 
   // ---- URL 参数：?gender=male|female&cloth=auto ----
   const query = new URLSearchParams(location.search)
   const initGender = query.get('gender') === 'female' ? 'female' : 'male'
-
-  // 加载初始模型
-  mannequin.loadModel(MODEL_URLS[initGender], () => {
-    if (query.get('cloth') === 'auto') applyAutoCloth()
-    updateHint()
-  })
+  if (initGender === 'female') mannequin.setGender('female')
+  if (query.get('cloth') === 'auto') applyAutoCloth()
+  updateHint()
 
   function applyAutoCloth() {
     const c = document.createElement('canvas')
@@ -149,7 +141,7 @@
   $('btnMale').addEventListener('click', () => { setGender('male') })
   $('btnFemale').addEventListener('click', () => { setGender('female') })
   function setGender(g) {
-    mannequin.setGender(g, MODEL_URLS[g], () => updateHint())
+    mannequin.setGender(g)
     $('btnMale').classList.toggle('active', g === 'male')
     $('btnFemale').classList.toggle('active', g === 'female')
     updateHint()
@@ -176,7 +168,7 @@
 
   function updateHint() {
     const g = mannequin.gender === 'male' ? '男性' : '女性'
-    const c = mannequin.clothGroup && mannequin.clothGroup.visible ? '已穿上衣' : '默认模特'
+    const c = mannequin.clothed ? '已穿上衣' : '白T黑裤'
     hint.textContent = `${g} · ${c} · 左右拖动旋转，滚轮缩放`
   }
 
