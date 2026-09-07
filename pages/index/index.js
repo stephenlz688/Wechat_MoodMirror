@@ -53,7 +53,8 @@ Page({
         const THREE = createScopedThreejs(canvas)
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
         renderer.setPixelRatio(dpr)
-        renderer.setSize(width, height)
+        // 第三个参数 false：不更新 canvas.style（避免触发微信 this._getData 报错）
+        renderer.setSize(width, height, false)
         renderer.outputEncoding = THREE.sRGBEncoding
         renderer.setClearColor(0x000000, 0)
 
