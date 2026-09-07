@@ -1,12 +1,19 @@
 /**
  * index.js —— 3D 换装模特页面
  *  - 初始化 WebGL 画布与 three.js 场景
- *  - 触摸交互：单指旋转模型、双指缩放
- *  - 性别切换：平滑变形动画
+ *  - 加载 GLB 写实人体模型
+ *  - 触摸交互：仅水平旋转、双指缩放
+ *  - 性别切换：切换男/女模型
  *  - 衣服：上传图片 → 纹理上身 / 脱下
  */
 import { createScopedThreejs } from 'threejs-miniprogram'
-import { Mannequin } from '../../utils/model'
+import { Mannequin, GENDER_MALE, GENDER_FEMALE } from '../../utils/model'
+
+// 模型文件路径（小程序包内相对路径）
+const MODEL_URLS = {
+  male: '/models/Xbot.glb',
+  female: '/models/Xbot.glb' // TODO: 替换为女性模型
+}
 
 Page({
   data: {
@@ -54,15 +61,15 @@ Page({
         renderer.setPixelRatio(dpr)
         renderer.setSize(width, height)
         renderer.outputEncoding = THREE.sRGBEncoding
-        renderer.setClearColor(0x000000, 0) // 透明背景，使用页面 CSS 渐变
+        renderer.setClearColor(0x000000, 0)
 
         const scene = new THREE.Scene()
         const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 30)
-        camera.position.set(0, 1.0, 3.1)
-        camera.lookAt(0, 0.88, 0)
+        camera.position.set(0, 0.95, 2.8)
+        camera.lookAt(0, 0.85, 0)
 
-        // 灯光：环境光 + 主光 + 补光 + 半球光
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6))
+        // 灯光
+        scene.add(new THREE.AmbientLight(0xffffff, 0.65))
         const keyLight = new THREE.DirectionalLight(0xffffff, 0.9)
         keyLight.position.set(2.5, 4, 3.5)
         scene.add(keyLight)
@@ -73,7 +80,20 @@ Page({
 
         // 模特
         const mannequin = new Mannequin(THREE, scene)
-        mannequin.group.rotation.y = 0.5 // 初始转一个角度，更有立体感
+        mannequin.group.rotation.y = 0.3
+
+        // 先加载模型分包（GLB 文件较大，放在分包里），再加载模型
+        wx.loadSubpackage({
+          name: 'models',
+          success: () => {
+            this._loadModel(mannequin, MODEL_URLS.male)
+          },
+          fail: (err) => {
+            console.error('分包加载失败', err)
+            // 降级：直接尝试加载（开发者工具中分包可能已内置）
+            this._loadModel(mannequin, MODEL_URLS.male)
+          }
+        })
 
         // 触控状态
         this._touch = { lastX: 0, lastY: 0, pinchDist: 0 }
@@ -85,26 +105,42 @@ Page({
           const dt = Math.min(0.05, (now - last) / 1000)
           last = now
           mannequin.update(dt)
-          camera.lookAt(0, 0.88, 0)
+          camera.lookAt(0, 0.85, 0)
           renderer.render(scene, camera)
           if (canvas.requestAnimationFrame) canvas.requestAnimationFrame(loop)
           else setTimeout(loop, 16)
         }
         loop()
 
-        // 保存引用
         this.canvas = canvas
         this.renderer = renderer
         this.camera = camera
         this.scene = scene
         this.mannequin = mannequin
-        this.setData({ ready: true })
       })
       .exec()
   },
 
   // -------------------------------------------------------------------------
-  // 触摸交互
+  // 加载模型（小程序环境：读取本地文件 → ArrayBuffer → GLTFLoader.parse）
+  // -------------------------------------------------------------------------
+  _loadModel(mannequin, filePath) {
+    wx.getFileSystemManager().readFile({
+      filePath,
+      success: (res) => {
+        mannequin.loadFromBuffer(res.data, () => {
+          this.setData({ ready: true })
+        })
+      },
+      fail: (err) => {
+        console.error('[index] 读取模型失败:', filePath, err)
+        wx.showToast({ title: '模型加载失败', icon: 'none' })
+      }
+    })
+  },
+
+  // -------------------------------------------------------------------------
+  // 触摸交互（仅水平旋转 + 双指缩放）
   // -------------------------------------------------------------------------
   onTouchStart(e) {
     const t = e.touches[0]
@@ -117,20 +153,17 @@ Page({
     if (!this.mannequin) return
     const ts = e.touches
     if (ts.length === 1) {
-      // 单指旋转
+      // 仅水平旋转
       const dx = ts[0].clientX - this._touch.lastX
-      const dy = ts[0].clientY - this._touch.lastY
       this._touch.lastX = ts[0].clientX
       this._touch.lastY = ts[0].clientY
-      const g = this.mannequin.group
-      g.rotation.y += dx * 0.008
-      g.rotation.x = Math.max(-0.5, Math.min(0.5, g.rotation.x + dy * 0.005))
+      this.mannequin.group.rotation.y += dx * 0.008
     } else if (ts.length === 2) {
       // 双指缩放
       const d = Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY)
       if (this._touch.pinchDist > 0) {
         const dist = this.camera.position.z * (this._touch.pinchDist / d)
-        this.camera.position.z = Math.max(2.0, Math.min(5.0, dist))
+        this.camera.position.z = Math.max(1.8, Math.min(4.5, dist))
       }
       this._touch.pinchDist = d
     }
@@ -146,7 +179,9 @@ Page({
   onSwitchGender(e) {
     const g = e.currentTarget.dataset.gender
     if (g === this.data.gender || !this.mannequin) return
-    this.mannequin.setGender(g)
+    this.mannequin.setGender(g, MODEL_URLS[g], () => {
+      // 模型加载完成
+    })
     this.setData({ gender: g })
   },
 
@@ -154,7 +189,7 @@ Page({
   // 衣服
   // -------------------------------------------------------------------------
   onChooseCloth() {
-    if (!this.mannequin) return
+    if (!this.mannequin || !this.mannequin.loaded) return
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],

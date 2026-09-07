@@ -81,10 +81,10 @@
   renderer.setClearColor(0x000000, 0)
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 30)
-  camera.position.set(0, 1.0, 3.1)
-  camera.lookAt(0, 0.88, 0)
+  camera.position.set(0, 0.95, 3.2)
+  camera.lookAt(0, 0.85, 0)
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6))
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65))
   const key = new THREE.DirectionalLight(0xffffff, 0.9)
   key.position.set(2.5, 4, 3.5)
   scene.add(key)
@@ -93,15 +93,25 @@
   scene.add(fill)
   scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2a44, 0.5))
 
-  const mannequin = new Mannequin(THREE_, scene)
-  mannequin.group.rotation.y = 0.5
+  const MODEL_URLS = {
+    male: '../models/Xbot.glb',
+    female: '../models/Xbot.glb' // TODO: 替换为女性模型
+  }
 
-  // ---- URL 参数（便于无头验证/演示）：?gender=male|female&cloth=auto ----
+  const mannequin = new Mannequin(THREE_, scene)
+  mannequin.group.rotation.y = 0.3
+
+  // ---- URL 参数：?gender=male|female&cloth=auto ----
   const query = new URLSearchParams(location.search)
   const initGender = query.get('gender') === 'female' ? 'female' : 'male'
-  if (initGender === 'female') mannequin.setGender('female')
-  if (query.get('cloth') === 'auto') {
-    // 程序化生成一件条纹 T 恤纹理
+
+  // 加载初始模型
+  mannequin.loadModel(MODEL_URLS[initGender], () => {
+    if (query.get('cloth') === 'auto') applyAutoCloth()
+    updateHint()
+  })
+
+  function applyAutoCloth() {
     const c = document.createElement('canvas')
     c.width = 256; c.height = 256
     const ctx = c.getContext('2d')
@@ -115,9 +125,8 @@
     $('btnReset').disabled = false
   }
 
-  // ---- 交互 ----
+  // ---- 交互（仅水平旋转 + 滚轮缩放）----
   let drag = null
-  let pinchDist = 0
   canvas.addEventListener('pointerdown', (e) => {
     drag = { x: e.clientX, y: e.clientY }
     canvas.setPointerCapture(e.pointerId)
@@ -125,24 +134,22 @@
   canvas.addEventListener('pointermove', (e) => {
     if (!drag) return
     const dx = e.clientX - drag.x
-    const dy = e.clientY - drag.y
     drag.x = e.clientX
     drag.y = e.clientY
     mannequin.group.rotation.y += dx * 0.008
-    mannequin.group.rotation.x = Math.max(-0.5, Math.min(0.5, mannequin.group.rotation.x + dy * 0.005))
   })
   canvas.addEventListener('pointerup', () => { drag = null })
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault()
     const d = camera.position.z * (1 + e.deltaY * 0.001)
-    camera.position.z = Math.max(2.0, Math.min(5.0, d))
+    camera.position.z = Math.max(1.8, Math.min(4.5, d))
   }, { passive: false })
 
   // ---- 性别 ----
   $('btnMale').addEventListener('click', () => { setGender('male') })
   $('btnFemale').addEventListener('click', () => { setGender('female') })
   function setGender(g) {
-    mannequin.setGender(g)
+    mannequin.setGender(g, MODEL_URLS[g], () => updateHint())
     $('btnMale').classList.toggle('active', g === 'male')
     $('btnFemale').classList.toggle('active', g === 'female')
     updateHint()
@@ -169,12 +176,11 @@
 
   function updateHint() {
     const g = mannequin.gender === 'male' ? '男性' : '女性'
-    const c = mannequin.clothMat ? '已穿上衣' : '默认木偶'
-    hint.textContent = `${g} · ${c} · 拖动旋转，滚轮/双指缩放`
+    const c = mannequin.clothGroup && mannequin.clothGroup.visible ? '已穿上衣' : '默认模特'
+    hint.textContent = `${g} · ${c} · 左右拖动旋转，滚轮缩放`
   }
 
   // ---- 渲染循环 ----
-  setGender(initGender)
   window.addEventListener('resize', resize)
   resize()
   let last = performance.now()
@@ -183,7 +189,7 @@
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
     mannequin.update(dt)
-    camera.lookAt(0, 0.88, 0)
+    camera.lookAt(0, 0.85, 0)
     renderer.render(scene, camera)
     requestAnimationFrame(loop)
   }

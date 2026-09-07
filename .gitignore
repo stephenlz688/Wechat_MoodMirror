@@ -8,6 +8,7 @@ install.log
 # 预览页临时浏览器配置
 preview/.edge-profile*/
 preview/.chrome-profile*/
+preview/shot-*.png
 
 # 系统文件
 .DS_Store
