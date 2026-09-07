@@ -8,7 +8,7 @@
 
 // 男性体型参数（总高约 1.7m，脚底 y≈0，各部位边界重叠消除间隙）
 const MALE = {
-  head: { r: 0.108, scaleY: 1.15, y: 1.58 },
+  head: { r: 0.10, scaleY: 1.15, y: 1.56 },
   neck: { rTop: 0.048, rBot: 0.052, h: 0.08, y: 1.42 },
   // 上躯干（T恤）：Lathe 点 [半径, 局部Y]，局部Y 0→h
   upperTorso: {
@@ -25,9 +25,9 @@ const MALE = {
   elbow: { r: 0.05, x: 0.21, y: 1.07 },
   forearm: { rTop: 0.043, rBot: 0.035, h: 0.26, x: 0.21, y: 0.93 },
   hand: { r: 0.047, scaleY: 1.3, x: 0.21, y: 0.79 },
-  thigh: { rTop: 0.072, rBot: 0.058, h: 0.38, x: 0.09, y: 0.62 },
-  knee: { r: 0.057, x: 0.09, y: 0.43 },
-  calf: { rTop: 0.052, rBot: 0.037, h: 0.38, x: 0.09, y: 0.24 },
+  thigh: { rTop: 0.078, rBot: 0.062, h: 0.36, x: 0.09, y: 0.60 },
+  knee: { r: 0.058, x: 0.09, y: 0.42 },
+  calf: { rTop: 0.056, rBot: 0.04, h: 0.34, x: 0.09, y: 0.25 },
   foot: { w: 0.075, h: 0.05, d: 0.14, x: 0.09, y: 0.045, z: 0.03 },
   shoulder: { r: 0.072, x: 0.185, y: 1.36 },
   chest: null
@@ -281,7 +281,7 @@ export class Mannequin {
   // -----------------------------------------------------------------------
   update(dt) {
     // 轻微呼吸：胸腔缩放
-    const t = performance.now() * 0.001
+    const t = Date.now() * 0.001
     const breathe = 1 + Math.sin(t * 1.5) * 0.008
     this.group.children.forEach((c) => {
       if (c.geometry && c.geometry.type === 'LatheGeometry' && c.position.y > 0.9) {
