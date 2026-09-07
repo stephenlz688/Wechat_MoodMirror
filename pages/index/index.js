@@ -9,10 +9,10 @@
 import { createScopedThreejs } from 'threejs-miniprogram'
 import { Mannequin, GENDER_MALE, GENDER_FEMALE } from '../../utils/model'
 
-// 模型文件路径（小程序包内相对路径）
+// 模型 CDN 地址（模型不打入小程序包，从网络下载后缓存到本地）
 const MODEL_URLS = {
-  male: '/models/Xbot.glb',
-  female: '/models/Xbot.glb' // TODO: 替换为女性模型
+  male: 'https://cdn.jsdelivr.net/gh/stephenlz688/Wechat_MoodMirror@main/models/Xbot.glb',
+  female: 'https://cdn.jsdelivr.net/gh/stephenlz688/Wechat_MoodMirror@main/models/Xbot.glb' // TODO: 替换为女性模型
 }
 
 Page({
@@ -82,18 +82,8 @@ Page({
         const mannequin = new Mannequin(THREE, scene)
         mannequin.group.rotation.y = 0.3
 
-        // 先加载模型分包（GLB 文件较大，放在分包里），再加载模型
-        wx.loadSubpackage({
-          name: 'models',
-          success: () => {
-            this._loadModel(mannequin, MODEL_URLS.male)
-          },
-          fail: (err) => {
-            console.error('分包加载失败', err)
-            // 降级：直接尝试加载（开发者工具中分包可能已内置）
-            this._loadModel(mannequin, MODEL_URLS.male)
-          }
-        })
+        // 加载模型（开发者工具中文件已在本地；真机如需分包下载可在此处加 wx.loadSubpackage）
+        this._loadModel(mannequin, MODEL_URLS.male)
 
         // 触控状态
         this._touch = { lastX: 0, lastY: 0, pinchDist: 0 }
@@ -124,17 +114,77 @@ Page({
   // -------------------------------------------------------------------------
   // 加载模型（小程序环境：读取本地文件 → ArrayBuffer → GLTFLoader.parse）
   // -------------------------------------------------------------------------
-  _loadModel(mannequin, filePath) {
-    wx.getFileSystemManager().readFile({
-      filePath,
+  _loadModel(mannequin, url) {
+    const fs = wx.getFileSystemManager()
+    const gender = this.data.gender
+    const cachePath = `${wx.env.USER_DATA_PATH}/model-${gender}.glb`
+
+    // 1. 尝试读取本地缓存
+    fs.readFile({
+      filePath: cachePath,
       success: (res) => {
+        console.log('[index] 使用本地缓存模型:', cachePath)
         mannequin.loadFromBuffer(res.data, () => {
           this.setData({ ready: true })
         })
       },
-      fail: (err) => {
-        console.error('[index] 读取模型失败:', filePath, err)
-        wx.showToast({ title: '模型加载失败', icon: 'none' })
+      fail: () => {
+        // 2. 本地没有，从网络下载
+        console.log('[index] 从网络下载模型:', url)
+        wx.showLoading({ title: '加载模型...', mask: true })
+        wx.downloadFile({
+          url,
+          success: (res) => {
+            if (res.statusCode !== 200) {
+              wx.hideLoading()
+              wx.showToast({ title: '模型下载失败', icon: 'none' })
+              return
+            }
+            // 3. 下载成功，保存到本地缓存
+            fs.saveFile({
+              tempFilePath: res.tempFilePath,
+              filePath: cachePath,
+              success: () => {
+                fs.readFile({
+                  filePath: cachePath,
+                  success: (r) => {
+                    wx.hideLoading()
+                    mannequin.loadFromBuffer(r.data, () => {
+                      this.setData({ ready: true })
+                    })
+                  },
+                  fail: (err) => {
+                    wx.hideLoading()
+                    console.error('[index] 读取缓存模型失败:', err)
+                    wx.showToast({ title: '模型加载失败', icon: 'none' })
+                  }
+                })
+              },
+              fail: () => {
+                // 保存失败，直接读临时文件
+                fs.readFile({
+                  filePath: res.tempFilePath,
+                  success: (r) => {
+                    wx.hideLoading()
+                    mannequin.loadFromBuffer(r.data, () => {
+                      this.setData({ ready: true })
+                    })
+                  },
+                  fail: (err) => {
+                    wx.hideLoading()
+                    console.error('[index] 读取临时模型失败:', err)
+                    wx.showToast({ title: '模型加载失败', icon: 'none' })
+                  }
+                })
+              }
+            })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            console.error('[index] 模型下载失败:', err)
+            wx.showToast({ title: '模型下载失败，请检查网络', icon: 'none' })
+          }
+        })
       }
     })
   },

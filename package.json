@@ -8,5 +8,12 @@
   },
   "dependencies": {
     "threejs-miniprogram": "^0.0.8"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.5.0",
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "meshoptimizer": "^1.2.0",
+    "three": "^0.160.0"
   }
 }

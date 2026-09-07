@@ -34,7 +34,12 @@
   },
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "models" },
+      { "type": "folder", "value": "preview" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "folder", "value": "verify" }
+    ],
     "include": []
   }
 }

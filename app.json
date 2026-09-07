@@ -2,15 +2,6 @@
   "pages": [
     "pages/index/index"
   ],
-  "subpackages": [
-    {
-      "root": "models",
-      "name": "models",
-      "pages": [
-        "pages/empty/empty"
-      ]
-    }
-  ],
   "window": {
     "navigationBarTitleText": "衣镜 · 3D 换装",
     "navigationBarBackgroundColor": "#1a1a2e",
