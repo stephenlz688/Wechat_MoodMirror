@@ -1,0 +1,8 @@
+/* app.wxss 全局样式 */
+page {
+  margin: 0;
+  padding: 0;
+  background: #1a1a2e;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  color: #ffffff;
+}

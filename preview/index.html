@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>3D 换装模特 · 预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
+  body { background: linear-gradient(180deg, #23233f 0%, #1a1a2e 55%, #16162a 100%); color: #fff; }
+  #app { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+  header { padding: 14px 18px 8px; }
+  header h1 { font-size: 20px; letter-spacing: 1px; }
+  header p { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 3px; }
+  #stage { position: relative; flex: 1; margin: 0 12px; border-radius: 14px; background: radial-gradient(ellipse at 50% 30%, #3a3a5c 0%, #26263f 60%, #1e1e33 100%); overflow: hidden; }
+  #gl { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  .panel { display: flex; align-items: center; gap: 10px; padding: 14px 18px 20px; flex-wrap: wrap; }
+  .label { font-size: 13px; color: rgba(255,255,255,.7); }
+  .seg { display: flex; background: rgba(0,0,0,.25); border-radius: 10px; padding: 3px; }
+  .seg button { border: 0; background: transparent; color: rgba(255,255,255,.7); font-size: 13px; padding: 7px 18px; border-radius: 8px; cursor: pointer; transition: all .25s; }
+  .seg button.active { background: linear-gradient(135deg, #7c6cff, #5b8cff); color: #fff; font-weight: 600; box-shadow: 0 3px 10px rgba(108,108,255,.35); }
+  .btn { border: 0; font-size: 13px; padding: 8px 18px; border-radius: 10px; cursor: pointer; }
+  .btn.primary { background: linear-gradient(135deg, #ff8f5c, #ff5c8a); color: #fff; font-weight: 600; }
+  .btn.ghost { background: rgba(255,255,255,.1); color: rgba(255,255,255,.8); border: 1px solid rgba(255,255,255,.15); }
+  .btn:disabled { opacity: .35; cursor: default; }
+  #file { display: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "threejs-miniprogram": "./shim.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>3D 换装模特</h1>
+    <p id="hint">男性 · 默认木偶 · 拖动旋转，滚轮/双指缩放</p>
+  </header>
+  <div id="stage"><canvas id="gl"></canvas></div>
+  <div class="panel">
+    <span class="label">性别</span>
+    <div class="seg">
+      <button id="btnMale" class="active">男性</button>
+      <button id="btnFemale">女性</button>
+    </div>
+    <button id="btnCloth" class="btn primary">上传衣服图片</button>
+    <button id="btnReset" class="btn ghost" disabled>脱下</button>
+    <input type="file" id="file" accept="image/*">
+  </div>
+</div>
+
+<script type="module">
+  import * as THREE from 'three'
+  import { createScopedThreejs } from 'threejs-miniprogram'
+  import { Mannequin } from '../utils/model.js'
+
+  const $ = (id) => document.getElementById(id)
+  const canvas = $('gl')
+  const stage = $('stage')
+  const hint = $('hint')
+
+  // ---- 尺寸 ----
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    canvas.width = stage.clientWidth * dpr
+    canvas.height = stage.clientHeight * dpr
+    renderer.setPixelRatio(dpr)
+    renderer.setSize(stage.clientWidth, stage.clientHeight)
+    camera.aspect = stage.clientWidth / stage.clientHeight
+    camera.updateProjectionMatrix()
+  }
+
+  // ---- 场景 ----
+  const THREE_ = createScopedThreejs(canvas)
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+  renderer.outputEncoding = THREE.sRGBEncoding
+  renderer.setClearColor(0x000000, 0)
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 30)
+  camera.position.set(0, 1.0, 3.1)
+  camera.lookAt(0, 0.88, 0)
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6))
+  const key = new THREE.DirectionalLight(0xffffff, 0.9)
+  key.position.set(2.5, 4, 3.5)
+  scene.add(key)
+  const fill = new THREE.DirectionalLight(0x88aaff, 0.3)
+  fill.position.set(-3, 1.5, -2.5)
+  scene.add(fill)
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x2a2a44, 0.5))
+
+  const mannequin = new Mannequin(THREE_, scene)
+  mannequin.group.rotation.y = 0.5
+
+  // ---- URL 参数（便于无头验证/演示）：?gender=male|female&cloth=auto ----
+  const query = new URLSearchParams(location.search)
+  const initGender = query.get('gender') === 'female' ? 'female' : 'male'
+  if (initGender === 'female') mannequin.setGender('female')
+  if (query.get('cloth') === 'auto') {
+    // 程序化生成一件条纹 T 恤纹理
+    const c = document.createElement('canvas')
+    c.width = 256; c.height = 256
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#e8564d'
+    ctx.fillRect(0, 0, 256, 256)
+    ctx.fillStyle = '#ffffff'
+    for (let y = 0; y < 256; y += 32) ctx.fillRect(0, y, 256, 16)
+    const tex = new THREE.CanvasTexture(c)
+    tex.encoding = THREE.sRGBEncoding
+    mannequin.setCloth(tex)
+    $('btnReset').disabled = false
+  }
+
+  // ---- 交互 ----
+  let drag = null
+  let pinchDist = 0
+  canvas.addEventListener('pointerdown', (e) => {
+    drag = { x: e.clientX, y: e.clientY }
+    canvas.setPointerCapture(e.pointerId)
+  })
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return
+    const dx = e.clientX - drag.x
+    const dy = e.clientY - drag.y
+    drag.x = e.clientX
+    drag.y = e.clientY
+    mannequin.group.rotation.y += dx * 0.008
+    mannequin.group.rotation.x = Math.max(-0.5, Math.min(0.5, mannequin.group.rotation.x + dy * 0.005))
+  })
+  canvas.addEventListener('pointerup', () => { drag = null })
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    const d = camera.position.z * (1 + e.deltaY * 0.001)
+    camera.position.z = Math.max(2.0, Math.min(5.0, d))
+  }, { passive: false })
+
+  // ---- 性别 ----
+  $('btnMale').addEventListener('click', () => { setGender('male') })
+  $('btnFemale').addEventListener('click', () => { setGender('female') })
+  function setGender(g) {
+    mannequin.setGender(g)
+    $('btnMale').classList.toggle('active', g === 'male')
+    $('btnFemale').classList.toggle('active', g === 'female')
+    updateHint()
+  }
+
+  // ---- 衣服 ----
+  $('btnCloth').addEventListener('click', () => $('file').click())
+  $('file').addEventListener('change', (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const url = URL.createObjectURL(file)
+    new THREE.TextureLoader().load(url, (texture) => {
+      texture.encoding = THREE.sRGBEncoding
+      mannequin.setCloth(texture)
+      $('btnReset').disabled = false
+      updateHint()
+    }, undefined, () => { alert('图片加载失败，请换一张') })
+  })
+  $('btnReset').addEventListener('click', () => {
+    mannequin.clearCloth()
+    $('btnReset').disabled = true
+    updateHint()
+  })
+
+  function updateHint() {
+    const g = mannequin.gender === 'male' ? '男性' : '女性'
+    const c = mannequin.clothMat ? '已穿上衣' : '默认木偶'
+    hint.textContent = `${g} · ${c} · 拖动旋转，滚轮/双指缩放`
+  }
+
+  // ---- 渲染循环 ----
+  setGender(initGender)
+  window.addEventListener('resize', resize)
+  resize()
+  let last = performance.now()
+  function loop() {
+    const now = performance.now()
+    const dt = Math.min(0.05, (now - last) / 1000)
+    last = now
+    mannequin.update(dt)
+    camera.lookAt(0, 0.88, 0)
+    renderer.render(scene, camera)
+    requestAnimationFrame(loop)
+  }
+  loop()
+</script>
+</body>
+</html>

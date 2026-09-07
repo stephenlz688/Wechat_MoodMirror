@@ -1,0 +1,140 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: linear-gradient(180deg, #23233f 0%, #1a1a2e 55%, #16162a 100%);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.status-bar {
+  padding-left: 32rpx;
+  padding-right: 32rpx;
+  padding-bottom: 16rpx;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+  color: #ffffff;
+  line-height: 1.4;
+}
+
+.hint {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 0 24rpx;
+  border-radius: 24rpx;
+  background: radial-gradient(ellipse at 50% 30%, #3a3a5c 0%, #26263f 60%, #1e1e33 100%);
+  overflow: hidden;
+  box-shadow: inset 0 0 60rpx rgba(0, 0, 0, 0.35);
+}
+
+.gl {
+  width: 100%;
+  height: 100%;
+}
+
+.loading {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46%;
+  text-align: center;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.5);
+  transition: opacity 0.4s;
+}
+
+.loading.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel {
+  flex-shrink: 0;
+  margin: 24rpx;
+  padding: 24rpx 28rpx 28rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1rpx solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.row:last-of-type {
+  margin-bottom: 12rpx;
+}
+
+.label {
+  width: 96rpx;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+.seg {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 14rpx;
+  padding: 4rpx;
+}
+
+.seg-item {
+  padding: 10rpx 44rpx;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 12rpx;
+  transition: all 0.25s;
+}
+
+.seg-item.active {
+  background: linear-gradient(135deg, #7c6cff, #5b8cff);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 6rpx 16rpx rgba(108, 108, 255, 0.35);
+}
+
+.btn {
+  padding: 12rpx 32rpx;
+  font-size: 26rpx;
+  border-radius: 14rpx;
+  margin-right: 16rpx;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #ff8f5c, #ff5c8a);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 6rpx 16rpx rgba(255, 92, 138, 0.3);
+}
+
+.btn.ghost {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1rpx solid rgba(255, 255, 255, 0.15);
+}
+
+.btn.ghost.disabled {
+  opacity: 0.35;
+}
+
+.tip {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.5;
+}

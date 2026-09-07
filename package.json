@@ -1,0 +1,12 @@
+{
+  "name": "weixin-app-3d-mannequin",
+  "version": "1.0.0",
+  "description": "微信小程序 3D 换装模特：可切换性别、上传衣服图片实时上身",
+  "main": "app.js",
+  "scripts": {
+    "build:npm": "node scripts/build-npm.js"
+  },
+  "dependencies": {
+    "threejs-miniprogram": "^0.0.8"
+  }
+}

@@ -1,0 +1,43 @@
+<view class="page">
+
+  <!-- 顶部状态栏 -->
+  <view class="status-bar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="title">3D 换装模特</view>
+    <view class="hint">{{gender === 'male' ? '男性' : '女性'}} · {{clothed ? '已穿上衣' : '默认木偶'}} · 拖动旋转，双指缩放</view>
+  </view>
+
+  <!-- 3D 舞台 -->
+  <view class="stage">
+    <canvas
+      type="webgl"
+      id="gl"
+      class="gl"
+      disable-scroll="true"
+      bindtouchstart="onTouchStart"
+      bindtouchmove="onTouchMove"
+      bindtouchend="onTouchEnd"
+      bindtouchcancel="onTouchEnd"
+    ></canvas>
+    <view class="loading {{ready ? 'hidden' : ''}}">模型加载中…</view>
+  </view>
+
+  <!-- 底部控制面板 -->
+  <view class="panel">
+    <view class="row">
+      <text class="label">性别</text>
+      <view class="seg">
+        <view class="seg-item {{gender === 'male' ? 'active' : ''}}" data-gender="male" bindtap="onSwitchGender">男性</view>
+        <view class="seg-item {{gender === 'female' ? 'active' : ''}}" data-gender="female" bindtap="onSwitchGender">女性</view>
+      </view>
+    </view>
+
+    <view class="row">
+      <text class="label">衣服</text>
+      <view class="btn primary" bindtap="onChooseCloth">上传衣服图片</view>
+      <view class="btn ghost {{clothed ? '' : 'disabled'}}" bindtap="onResetCloth">脱下</view>
+    </view>
+
+    <view class="tip">上传衣服的平铺图或正面照，会自动穿到模特身上（躯干 + 袖子）。</view>
+  </view>
+
+</view>
