@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>body{font-family:monospace;padding:20px;background:#222;color:#0f0;font-size:14px;white-space:pre-wrap}</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/" } }
+</script></head>
+<body><div id="log">start...</div>
+<script type="module">
+const log = document.getElementById('log')
+const out = (m) => { log.textContent += '\n' + m; console.log(m) }
+window.onerror = (e) => out('WINDOW ERROR: ' + e)
+window.addEventListener('unhandledrejection', e => out('REJECT: ' + (e.reason&&e.reason.stack||e.reason)))
+try {
+  out('importing three...')
+  const THREE = await import('three')
+  out('three ok, version=' + THREE.REVISION)
+  out('importing GLTFLoader...')
+  const { GLTFLoader } = await import('three/addons/GLTFLoader.js')
+  out('GLTFLoader ok')
+  out('importing HumanModel...')
+  const { HumanModel } = await import('../utils/human-model.js')
+  out('HumanModel ok')
+  out('fetching male.glb...')
+  const r = await fetch('../models/male.glb')
+  out('fetch status=' + r.status)
+  const buf = await r.arrayBuffer()
+  out('buffer bytes=' + buf.byteLength)
+  const loader = new GLTFLoader()
+  await new Promise((resolve, reject) => {
+    loader.parse(buf, '', (gltf) => {
+      out('parse ok, meshes=' + gltf.scene.children.length)
+      resolve()
+    }, (err) => { out('PARSE ERROR: ' + err); reject(err) })
+  })
+  out('ALL DONE')
+} catch (e) {
+  out('CATCH: ' + (e && e.stack || e))
+}
+</script></body></html>

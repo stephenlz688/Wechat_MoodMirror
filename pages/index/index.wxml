@@ -18,7 +18,10 @@
       bindtouchend="onTouchEnd"
       bindtouchcancel="onTouchEnd"
     ></canvas>
-    <view class="loading {{ready ? 'hidden' : ''}}">模型加载中…</view>
+    <view class="loading {{loading ? '' : 'hidden'}}">
+      <view class="spinner"></view>
+      <text class="loading-text">{{loadingText}}</text>
+    </view>
   </view>
 
   <!-- 底部控制面板 -->

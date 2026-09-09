@@ -5,11 +5,17 @@ node_modules/
 *.log
 install.log
 
-# 预览页临时浏览器配置
+# 混元3D 原始大模型与提取纹理（成品只保留 models/*.glb）
+models/source/
+
+# 预览页临时浏览器配置与截图
+preview/.edge-*/
 preview/.edge-profile*/
-preview/.edge-p*/
 preview/.chrome-profile*/
 preview/shot-*.png
+
+# 临时目录
+.tmp-*/
 
 # 系统文件
 .DS_Store

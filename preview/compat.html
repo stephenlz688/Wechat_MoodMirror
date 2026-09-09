@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { margin:0; background:#1a1a2e; color:#0f0; font-family:monospace; font-size:13px; display:flex; height:100vh }
+  #log { width:300px; padding:12px; white-space:pre-wrap; overflow:auto; background:#111; }
+  #view { flex:1; position:relative }
+  #c { width:100%; height:100%; display:block }
+  #ok { position:absolute; top:10px; left:10px; color:#ffd34d; font-size:14px }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.r108.module.js" } }
+</script>
+</head>
+<body>
+<div id="log">r108 compat test...</div>
+<div id="view"><canvas id="c"></canvas><div id="ok"></div></div>
+<script type="module">
+  const logEl = document.getElementById('log')
+  const okEl = document.getElementById('ok')
+  const L = (m) => { logEl.textContent += '\n' + m; console.log(m) }
+  window.onerror = (m) => L('ERROR ' + m)
+  window.addEventListener('unhandledrejection', e => L('REJECT ' + (e.reason&&e.reason.stack||e.reason)))
+
+  const THREE = await import('three')
+  L('three r' + THREE.REVISION)
+  const { GLTFLoader } = await import('./vendor/GLTFLoader.r108.js')
+  L('GLTFLoader(r108) ok')
+  const { HumanModel } = await import('../utils/human-model.js')
+  L('HumanModel ok')
+
+  const canvas = document.getElementById('c')
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true })
+  renderer.setPixelRatio(1)
+  renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight, false)
+  renderer.outputEncoding = THREE.sRGBEncoding
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(35, canvas.parentElement.clientWidth/canvas.parentElement.clientHeight, .1, 30)
+  camera.position.set(0, .85, 3.7); camera.lookAt(0,.8,0)
+  scene.add(new THREE.AmbientLight(0xffffff,.8))
+  const k=new THREE.DirectionalLight(0xffffff,1); k.position.set(2.5,4,3.5); scene.add(k)
+
+  function readImagePixels(image){
+    const w=image.width||1024,h=image.height||1024
+    const c=document.createElement('canvas'); c.width=w;c.height=h
+    const ctx=c.getContext('2d'); ctx.drawImage(image,0,0,w,h)
+    return {width:w,height:h,data:ctx.getImageData(0,0,w,h).data}
+  }
+  const human = new HumanModel(THREE, scene, { targetHeight:1.7, readImagePixels })
+  human.group.rotation.y = .25
+
+  const loader = new GLTFLoader()
+  const parse = (buf) => new Promise((res,rej)=>loader.parse(buf,'',g=>res(g.scene),rej))
+  const buf = await (await fetch('../models/male.glb')).arrayBuffer()
+  L('fetched ' + buf.byteLength)
+  await human.addGender('male', buf, parse)
+  L('addGender ok')
+  let dbg=[]
+  human.models.male.traverse(o=>{ if(o.isMesh&&o.userData.shirtCount!=null) dbg.push(`shirt ${o.userData.shirtCount}/${o.userData.totalCount} px=${o.userData.hasPixels}`) })
+  L(dbg.join('; '))
+
+  // 换条纹衣
+  const tc=document.createElement('canvas'); tc.width=tc.height=256
+  const x=tc.getContext('2d'); x.fillStyle='#3aa0ff';x.fillRect(0,0,256,256);x.fillStyle='#fff';for(let y=0;y<256;y+=32)x.fillRect(0,y,256,16)
+  const tex=new THREE.CanvasTexture(tc); tex.encoding=THREE.sRGBEncoding; tex.wrapS=tex.wrapT=THREE.RepeatWrapping
+  human.setCloth(tex)
+  okEl.textContent = 'r108 渲染+换衣成功'
+  L('setCloth ok —— r108 全链路通过')
+
+  function loop(){ human.update(); camera.lookAt(0,.8,0); renderer.render(scene,camera); requestAnimationFrame(loop) }
+  loop()
+</script>
+</body></html>
