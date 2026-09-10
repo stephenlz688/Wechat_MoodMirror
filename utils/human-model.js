@@ -38,10 +38,11 @@ export class HumanModel {
     const gltfScene = await parseBuffer(arrayBuffer)
     const model = this._normalize(gltfScene)
     model.visible = gender === this.gender
-    this._tagShirtArea(model)
+    this._tagAreas(model)
     this.models[gender] = model
     this.loaded[gender] = true
     this.group.add(model)
+    this._applySkinToModel(model)
     if (this.clothTexture) this._applyClothToModel(model, this.clothTexture)
     return model
   }
@@ -75,10 +76,11 @@ export class HumanModel {
   // ----------------------------------------------------------------------
   // 识别 T 恤区域，写入 aShirt 顶点属性（1=T恤，0=其他）
   // ----------------------------------------------------------------------
-  _tagShirtArea(model) {
+  // 识别 T 恤与皮肤区域，分别写入 aShirt / aSkin 顶点属性
+  _tagAreas(model) {
     const T = this.T
     const H = this.targetHeight
-    // T 恤所在的世界高度区间（排除头部与白鞋/裤腿）
+    // T 恤所在的世界高度区间
     const yLow = H * 0.52
     const yHigh = H * 0.86
 
@@ -92,8 +94,8 @@ export class HumanModel {
       if (!pos) return
       const count = pos.count
       const shirt = new Float32Array(count)
+      const skin = new Float32Array(count)
 
-      // 尝试取 baseColor 纹理图像做颜色识别（兼容 r108 的 map.image 与新版 map.source.data）
       const mat = mesh.material
       let pixels = null
       const map = mat && mat.map
@@ -102,48 +104,81 @@ export class HumanModel {
         try { pixels = this.opts.readImagePixels(texImage) } catch (e) { pixels = null }
       }
       const uv = geo.attributes.uv
-      let shirtCount = 0
+      let shirtCount = 0, skinCount = 0
 
       for (let i = 0; i < count; i++) {
-        // 兼容 r108（无 Vector3.fromBufferAttribute）
         tmp.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mesh.matrixWorld)
-        const wx = tmp.x, wy = tmp.y, wz = tmp.z
-        const inHeight = wy > yLow && wy < yHigh
-        if (!inHeight) { shirt[i] = 0; continue }
+        const wx = tmp.x, wy = tmp.y
 
+        // ---- T 恤 ----
         let isShirt = false
-        // 躯干核心区域（不含脖子）一定属于上衣，避免下摆/腋下阴影漏识别
-        const coreTorso = Math.abs(wx) < 0.17 && !(Math.abs(wx) < 0.07 && wy > H * 0.80)
-        if (pixels && uv) {
-          const u = uv.getX(i), v = uv.getY(i)
-          const px = Math.min(pixels.width - 1, Math.max(0, Math.floor(u * pixels.width)))
-          const py = Math.min(pixels.height - 1, Math.max(0, Math.floor(v * pixels.height)))
-          const idx = (py * pixels.width + px) * 4
-          const r = pixels.data[idx] / 255, g = pixels.data[idx + 1] / 255, b = pixels.data[idx + 2] / 255
-          const mn = Math.min(r, g, b), mx = Math.max(r, g, b)
-          // 白色 T 恤：高亮、低饱和
-          const white = mn > 0.62 && (mx - mn) < 0.18
-          // 排除脖子（中轴最窄处偏上）
-          const notNeck = !(Math.abs(wx) < 0.07 && wy > H * 0.80)
-          isShirt = (white || coreTorso) && notNeck
-        } else {
-          // 兜底：位置判断（躯干 + 上臂）
-          const torso = Math.abs(wx) < 0.24 && !(Math.abs(wx) < 0.07 && wy > H * 0.80)
-          const arm = Math.abs(wx) > 0.16 && Math.abs(wx) < 0.34
-          isShirt = torso || arm
+        const inShirtHeight = wy > yLow && wy < yHigh
+        if (inShirtHeight) {
+          const coreTorso = Math.abs(wx) < 0.17 && !(Math.abs(wx) < 0.07 && wy > H * 0.80)
+          if (pixels && uv) {
+            const c = this._samplePixel(pixels, uv, i)
+            const mn = Math.min(c.r, c.g, c.b), mx = Math.max(c.r, c.g, c.b)
+            const white = mn > 0.62 && (mx - mn) < 0.18
+            const notNeck = !(Math.abs(wx) < 0.07 && wy > H * 0.80)
+            isShirt = (white || coreTorso) && notNeck
+          } else {
+            const torso = Math.abs(wx) < 0.24 && !(Math.abs(wx) < 0.07 && wy > H * 0.80)
+            const arm = Math.abs(wx) > 0.16 && Math.abs(wx) < 0.34
+            isShirt = torso || arm
+          }
         }
         shirt[i] = isShirt ? 1 : 0
         if (isShirt) shirtCount++
+
+        // ---- 皮肤（脸/脖子/手臂/手）----
+        if (!isShirt && wy > H * 0.40) {
+          if (pixels && uv) {
+            const c = this._samplePixel(pixels, uv, i)
+            // 肤色：暖调 R>G>B，亮度中高，排除高亮(白T/鞋)与暗部(头发/裤)
+            const warm = c.r > c.g + 0.005 && c.g > c.b + 0.005
+            const midLight = c.r > 0.28 && c.r < 0.98
+            const notBright = Math.min(c.r, c.g, c.b) < 0.90
+            const notDark = Math.max(c.r, c.g, c.b) > 0.20
+            const reddish = (c.r - c.b) > 0.03
+            if (warm && midLight && notBright && notDark && reddish) {
+              skin[i] = 1
+              skinCount++
+            }
+          } else {
+            // 兜底：脸+脖子+手臂区域
+            const face = wy > H * 0.84 && Math.abs(wx) < 0.13
+            const neck = wy > H * 0.78 && wy < H * 0.86 && Math.abs(wx) < 0.08
+            const arm = Math.abs(wx) > 0.18 && Math.abs(wx) < 0.36 && wy > H * 0.42
+            if (face || neck || arm) { skin[i] = 1; skinCount++ }
+          }
+        }
       }
 
-      // 兼容 r108（addAttribute）与新版（setAttribute）
-      const aShirt = new T.BufferAttribute(shirt, 1)
-      if (geo.setAttribute) geo.setAttribute('aShirt', aShirt)
-      else geo.addAttribute('aShirt', aShirt)
+      const setAttr = (name, arr) => {
+        const attr = new T.BufferAttribute(arr, 1)
+        if (geo.setAttribute) geo.setAttribute(name, attr)
+        else geo.addAttribute(name, attr)
+      }
+      setAttr('aShirt', shirt)
+      setAttr('aSkin', skin)
       mesh.userData.shirtCount = shirtCount
+      mesh.userData.skinCount = skinCount
       mesh.userData.totalCount = count
       mesh.userData.hasPixels = !!pixels
     })
+  }
+
+  // 从纹理像素中采样某顶点的颜色
+  _samplePixel(pixels, uv, i) {
+    const u = uv.getX(i), v = uv.getY(i)
+    const px = Math.min(pixels.width - 1, Math.max(0, Math.floor(u * pixels.width)))
+    const py = Math.min(pixels.height - 1, Math.max(0, Math.floor(v * pixels.height)))
+    const idx = (py * pixels.width + px) * 4
+    return {
+      r: pixels.data[idx] / 255,
+      g: pixels.data[idx + 1] / 255,
+      b: pixels.data[idx + 2] / 255
+    }
   }
 
   // ----------------------------------------------------------------------
@@ -216,6 +251,66 @@ export class HumanModel {
       }
       mesh.userData.clothMat.uniforms.uTex.value = texture
       mesh.userData.clothLayer.visible = true
+    })
+  }
+
+  // ----------------------------------------------------------------------
+  // 皮肤美白层：在肤色区域叠加一层浅白暖肤色，提亮肤色
+  // ----------------------------------------------------------------------
+  _buildSkinMaterial() {
+    const T = this.T
+    return new T.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uSkinColor: { value: new T.Color(1.0, 0.90, 0.82) },
+        uSkinAlpha: { value: 0.38 },
+        uExpand: { value: 0.001 }
+      },
+      vertexShader: `
+        attribute float aSkin;
+        varying float vSkin;
+        varying vec3 vNrm;
+        uniform float uExpand;
+        void main() {
+          vSkin = aSkin;
+          vec3 p = position + normal * uExpand;
+          vNrm = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uSkinColor;
+        uniform float uSkinAlpha;
+        varying float vSkin;
+        varying vec3 vNrm;
+        void main() {
+          float mask = smoothstep(0.4, 0.6, vSkin);
+          if (mask < 0.02) discard;
+          vec3 n = normalize(vNrm);
+          float shade = 0.85 + 0.15 * max(dot(n, normalize(vec3(0.4, 1.0, 0.6))), 0.0);
+          gl_FragColor = vec4(uSkinColor * shade, uSkinAlpha * mask);
+        }
+      `
+    })
+  }
+
+  _applySkinToModel(model) {
+    const T = this.T
+    model.traverse((mesh) => {
+      if (!mesh.isMesh || mesh.userData.isClothLayer || mesh.userData.isSkinLayer) return
+      if (!mesh.geometry || !mesh.geometry.attributes.aSkin) return
+      if (!mesh.userData.skinLayer) {
+        const mat = this._buildSkinMaterial()
+        const layer = new T.Mesh(mesh.geometry, mat)
+        layer.renderOrder = 1
+        layer.userData.isSkinLayer = true
+        layer.matrixAutoUpdate = false
+        layer.matrix.identity()
+        mesh.add(layer)
+        mesh.userData.skinLayer = layer
+      }
+      mesh.userData.skinLayer.visible = true
     })
   }
 
