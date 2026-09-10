@@ -7,24 +7,24 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
-  body { background: linear-gradient(180deg, #23233f 0%, #1a1a2e 55%, #16162a 100%); color: #fff; }
+  body { background: linear-gradient(180deg, #f5f7fb 0%, #eef1f7 55%, #e8ecf3 100%); color: #1f2430; }
   #app { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
   header { padding: 14px 18px 8px; }
-  header h1 { font-size: 20px; letter-spacing: 1px; }
-  header p { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 3px; }
-  #stage { position: relative; flex: 1; margin: 0 12px; border-radius: 14px; background: radial-gradient(ellipse at 50% 30%, #3a3a5c 0%, #26263f 60%, #1e1e33 100%); overflow: hidden; }
+  header h1 { font-size: 20px; letter-spacing: 1px; color: #1f2430; }
+  header p { font-size: 12px; color: #8a91a6; margin-top: 3px; }
+  #stage { position: relative; flex: 1; margin: 0 12px; border-radius: 14px; background: radial-gradient(ellipse at 50% 28%, #ffffff 0%, #f4f6fb 55%, #e9edf4 100%); overflow: hidden; box-shadow: 0 8px 30px rgba(60,70,110,.08); }
   #gl { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
-  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: rgba(255,255,255,.8); font-size: 14px; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: #6b7280; font-size: 14px; }
   .spinner { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.18); border-top-color: #8b8bff; border-radius: 50%; animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .panel { display: flex; align-items: center; gap: 10px; padding: 14px 18px 20px; flex-wrap: wrap; }
-  .label { font-size: 13px; color: rgba(255,255,255,.7); }
-  .seg { display: flex; background: rgba(0,0,0,.25); border-radius: 10px; padding: 3px; }
-  .seg button { border: 0; background: transparent; color: rgba(255,255,255,.7); font-size: 13px; padding: 7px 18px; border-radius: 8px; cursor: pointer; transition: all .25s; }
+  .label { font-size: 13px; color: #5a6178; }
+  .seg { display: flex; background: #eef1f6; border-radius: 10px; padding: 3px; }
+  .seg button { border: 0; background: transparent; color: #6b7280; font-size: 13px; padding: 7px 18px; border-radius: 8px; cursor: pointer; transition: all .25s; }
   .seg button.active { background: linear-gradient(135deg, #7c6cff, #5b8cff); color: #fff; font-weight: 600; box-shadow: 0 3px 10px rgba(108,108,255,.35); }
   .btn { border: 0; font-size: 13px; padding: 8px 18px; border-radius: 10px; cursor: pointer; }
   .btn.primary { background: linear-gradient(135deg, #ff8f5c, #ff5c8a); color: #fff; font-weight: 600; }
-  .btn.ghost { background: rgba(255,255,255,.1); color: rgba(255,255,255,.8); border: 1px solid rgba(255,255,255,.15); }
+  .btn.ghost { background: #f0f2f7; color: #5a6178; border: 1px solid #e2e6ee; }
   .btn:disabled { opacity: .35; cursor: default; }
   #file { display: none; }
 </style>

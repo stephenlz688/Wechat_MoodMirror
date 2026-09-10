@@ -4,9 +4,9 @@
   ],
   "window": {
     "navigationBarTitleText": "衣镜 · 3D 试衣",
-    "navigationBarBackgroundColor": "#1a1a2e",
-    "navigationBarTextStyle": "white",
-    "backgroundColor": "#1a1a2e"
+    "navigationBarBackgroundColor": "#f5f7fb",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7fb"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"
