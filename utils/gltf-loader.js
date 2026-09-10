@@ -10,6 +10,21 @@ function registerGLTFLoader(THREE) {
 
 THREE.GLTFLoader = ( function () {
 
+	// 小程序逻辑层没有 Blob / URL.createObjectURL，内嵌纹理改用 base64 data URI
+	function _arrayBufferToImageURI( bufferView, mimeType ) {
+		if ( typeof wx !== 'undefined' && wx.arrayBufferToBase64 ) {
+			return { uri: 'data:' + mimeType + ';base64,' + wx.arrayBufferToBase64( bufferView ), isObjectURL: false };
+		}
+		if ( typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL ) {
+			var blob = new Blob( [ bufferView ], { type: mimeType } );
+			return { uri: URL.createObjectURL( blob ), isObjectURL: true };
+		}
+		var bytes = new Uint8Array( bufferView );
+		var binary = '';
+		for ( var i = 0; i < bytes.length; i ++ ) binary += String.fromCharCode( bytes[ i ] );
+		return { uri: 'data:' + mimeType + ';base64,' + btoa( binary ), isObjectURL: false };
+	}
+
 	function GLTFLoader( manager ) {
 
 		this.manager = ( manager !== undefined ) ? manager : THREE.DefaultLoadingManager;
@@ -1997,9 +2012,9 @@ THREE.GLTFLoader = ( function () {
 
 			sourceURI = parser.getDependency( 'bufferView', source.bufferView ).then( function ( bufferView ) {
 
-				isObjectURL = true;
-				var blob = new Blob( [ bufferView ], { type: source.mimeType } );
-				sourceURI = URL.createObjectURL( blob );
+				var result = _arrayBufferToImageURI( bufferView, source.mimeType );
+				isObjectURL = result.isObjectURL;
+				sourceURI = result.uri;
 				return sourceURI;
 
 			} );

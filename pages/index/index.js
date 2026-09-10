@@ -55,7 +55,8 @@ Page({
         const THREE = createScopedThreejs(canvas)
         registerGLTFLoader(THREE) // 挂载 THREE.GLTFLoader
 
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+        const gl = canvas.getContext('webgl')
+        const renderer = new THREE.WebGLRenderer({ canvas, context: gl, antialias: true, alpha: true })
         renderer.setPixelRatio(dpr)
         // 第三参 false：不更新 canvas.style（避免微信 this._getData 渲染层错误）
         renderer.setSize(width, height, false)
@@ -141,7 +142,12 @@ Page({
                   this.setData({ loading: false, ready: true })
                 }
                 resolve(model)
-              }).catch(reject)
+              }).catch((err) => {
+                if (isPrimary) {
+                  this.setData({ loadingText: '模型解析失败：' + (err && err.message || err) })
+                }
+                reject(err)
+              })
             },
             fail: reject
           })
