@@ -70,20 +70,35 @@ node preview/server.js
 2. 导入项目目录，构建 npm
 3. 勾选「不校验合法域名」，编译运行
 
-### AI 换衣配置（可选）
+### AI 换衣配置
 
-AI 换衣通过本地服务器代理调用火山引擎方舟 Seedream 文生图 API，小程序端不暴露 API Key。
+AI 换衣通过本地服务器代理调用文生图 API，小程序端不暴露 API Key。支持三种 provider，在 `config/ai-config.json` 的 `provider` 字段切换：
 
-**申请 API Key：**
+| provider | 费用 | 申请 | 国内访问 | 说明 |
+|---|---|---|---|---|
+| `pollinations`（默认） | 完全免费 | 无需注册、无需 Key | 可直连 | Flux 模型，生成布料纹理，开箱即用 |
+| `siliconflow` | 新用户送 14 元额度 | 需注册拿 Key | 国内稳定 | SDXL / FLUX，质量更高 |
+| `ark` | 按量付费 | 需注册拿 Key | 国内 | 火山引擎 Seedream |
 
-1. 注册并登录 [火山引擎控制台](https://console.volcengine.com/)，完成实名认证
-2. 开通「火山方舟」服务：https://console.volcengine.com/ark
-3. 在「API Key 管理」页面创建 API Key：https://console.volcengine.com/ark/region:ark+cn-beijing/apikey
-4. 在「模型广场」开通 Seedream 模型（推荐 `doubao-seedream-4-5-251128`）
-5. 把 API Key 填入 `config/ai-config.json` 的 `arkApiKey` 字段
-6. 重启 `node preview/server.js`
+**默认方案（Pollinations，零配置）：**
 
-**使用：** 在小程序底部输入衣服描述（如"蓝色条纹T恤"），选好部位，点「AI 生成」，生成的纹理图会自动穿到模特对应部位。
+直接启动 `node preview/server.js` 即可使用，无需任何申请。生成的是布料/材质纹理图，自动贴合到 3D 模型对应部位。
+
+**切换到硅基流动（国内更稳定）：**
+
+1. 注册 [硅基流动](https://siliconflow.com/)，获取 API Key
+2. 在「模型广场」开通文生图模型（如 `stabilityai/stable-diffusion-xl-base-1.0`）
+3. `config/ai-config.json` 设 `provider: "siliconflow"`，填入 `siliconFlowApiKey`
+4. 重启服务器
+
+**切换到火山引擎 Seedream：**
+
+1. 注册 [火山引擎控制台](https://console.volcengine.com/)，开通「火山方舟」
+2. 创建 API Key，开通 Seedream 模型
+3. `config/ai-config.json` 设 `provider: "ark"`，填入 `arkApiKey`
+4. 重启服务器
+
+**使用：** 在小程序底部输入衣服描述（如"蓝色牛仔"、"黑色皮革"、"红色条纹"），选好部位，点「AI 生成」，生成的纹理图会自动穿到模特对应部位。
 
 > 上线时需把 AI 代理接口部署到 HTTPS 服务器，并在小程序后台配置 request 合法域名。
 

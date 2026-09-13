@@ -17,7 +17,7 @@ const MIME = {
   '.glb': 'model/gltf-binary'
 }
 
-// 读取 AI 配置（环境变量优先，其次 config/ai-config.json）
+// 读取 AI 配置
 function loadAiConfig() {
   const cfgPath = path.join(ROOT, 'config', 'ai-config.json')
   let cfg = {}
@@ -25,34 +25,48 @@ function loadAiConfig() {
     cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
   } catch (e) { /* 配置文件不存在时用默认值 */ }
   return {
-    apiKey: process.env.ARK_API_KEY || cfg.arkApiKey || '',
-    model: cfg.model || 'doubao-seedream-4-5-251128',
-    baseUrl: cfg.baseUrl || 'https://ark.cn-beijing.volces.com/api/v3/images/generations',
-    size: cfg.size || '1024x1024'
+    provider: cfg.provider || 'pollinations',
+    size: cfg.size || '1024x1024',
+    // 火山方舟
+    arkApiKey: process.env.ARK_API_KEY || cfg.arkApiKey || '',
+    arkModel: cfg.arkModel || 'doubao-seedream-4-5-251128',
+    arkBaseUrl: cfg.arkBaseUrl || 'https://ark.cn-beijing.volces.com/api/v3/images/generations',
+    // 硅基流动
+    siliconFlowApiKey: process.env.SILICONFLOW_API_KEY || cfg.siliconFlowApiKey || '',
+    siliconFlowModel: cfg.siliconFlowModel || 'stabilityai/stable-diffusion-xl-base-1.0',
+    siliconFlowBaseUrl: cfg.siliconFlowBaseUrl || 'https://api.siliconflow.cn/v1/images/generations',
+    // Pollinations（免费无需Key）
+    pollinationsModel: cfg.pollinationsModel || 'flux'
   }
 }
 
-// 根据品类构建专业 prompt（生成衣服平铺/纹理图）
+// 根据品类构建专业 prompt（生成布料/材质纹理图，适合三平面映射）
+// 生成纯纹理而非穿着图，避免人物干扰，贴合3D模型效果更好
 function buildPrompt(category, userPrompt) {
+  const fabric = `${userPrompt} fabric texture, woven textile material, seamless repeat pattern, close-up material detail, even studio lighting, no person no object no garment`
   const templates = {
-    shirt: `一件${userPrompt}的T恤，平铺展示正面，纯白色背景，服装产品摄影，高清布料纹理，无模特无人台，无褶皱阴影，居中构图`,
-    pants: `一条${userPrompt}的长裤，平铺展示正面，纯白色背景，服装产品摄影，高清布料纹理，无模特无人台，无褶皱阴影，居中构图`,
-    shoes: `一双${userPrompt}的鞋子，侧面45度视角，纯白色背景，产品摄影，高清材质纹理，无模特，居中构图`,
-    hat: `一顶${userPrompt}的帽子，正面视角，纯白色背景，产品摄影，高清材质纹理，无模特，居中构图`
+    shirt: fabric,
+    pants: fabric,
+    shoes: `${userPrompt} material texture, footwear leather or fabric material, seamless pattern, close-up detail, even lighting, no person no object`,
+    hat: fabric
   }
-  return templates[category] || templates.shirt
+  return templates[category] || fabric
 }
 
-// 调用火山方舟 Seedream 文生图
-function callArk(cfg, prompt) {
+// Pollinations：免费无需Key，直接URL返回图片
+function callPollinations(cfg, prompt) {
+  const [w, h] = (cfg.size || '1024x1024').split('x')
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+    `?model=${cfg.pollinationsModel}&width=${w}&height=${h}&nologo=true&seed=${Date.now() % 100000}`
+  console.log('[AI] Pollinations URL:', url.slice(0, 120) + '...')
+  return Promise.resolve(url)
+}
+
+// 通用 OpenAI 兼容文生图调用（火山方舟 / 硅基流动）
+function callOpenAICompatible(baseUrl, apiKey, model, prompt, size) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: cfg.model,
-      prompt: prompt,
-      size: cfg.size,
-      response_format: 'url'
-    })
-    const url = new URL(cfg.baseUrl)
+    const body = JSON.stringify({ model, prompt, size, response_format: 'url' })
+    const url = new URL(baseUrl)
     const req = https.request({
       hostname: url.hostname,
       port: url.port || 443,
@@ -60,7 +74,7 @@ function callArk(cfg, prompt) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + cfg.apiKey,
+        'Authorization': 'Bearer ' + apiKey,
         'Content-Length': Buffer.byteLength(body)
       }
     }, (resp) => {
@@ -84,6 +98,21 @@ function callArk(cfg, prompt) {
   })
 }
 
+// 按 provider 分发
+function callAi(cfg, prompt) {
+  switch (cfg.provider) {
+    case 'ark':
+      if (!cfg.arkApiKey) return Promise.reject(new Error('provider=ark 但未配置 arkApiKey'))
+      return callOpenAICompatible(cfg.arkBaseUrl, cfg.arkApiKey, cfg.arkModel, prompt, cfg.size)
+    case 'siliconflow':
+      if (!cfg.siliconFlowApiKey) return Promise.reject(new Error('provider=siliconflow 但未配置 siliconFlowApiKey'))
+      return callOpenAICompatible(cfg.siliconFlowBaseUrl, cfg.siliconFlowApiKey, cfg.siliconFlowModel, prompt, cfg.size)
+    case 'pollinations':
+    default:
+      return callPollinations(cfg, prompt)
+  }
+}
+
 const server = http.createServer((req, res) => {
   // CORS（小程序/浏览器调用）
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -100,18 +129,14 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       try {
         const cfg = loadAiConfig()
-        if (!cfg.apiKey) {
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-          return res.end(JSON.stringify({ error: '未配置 API Key，请在 config/ai-config.json 填入 arkApiKey 后重启服务器' }))
-        }
         const { category, prompt } = JSON.parse(body || '{}')
         if (!category || !prompt) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
           return res.end(JSON.stringify({ error: '缺少 category 或 prompt 参数' }))
         }
         const fullPrompt = buildPrompt(category, prompt)
-        console.log(`[AI] 生成 ${category}: ${fullPrompt}`)
-        const imgUrl = await callArk(cfg, fullPrompt)
+        console.log(`[AI] provider=${cfg.provider} 生成 ${category}: ${fullPrompt}`)
+        const imgUrl = await callAi(cfg, fullPrompt)
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify({ url: imgUrl }))
       } catch (e) {

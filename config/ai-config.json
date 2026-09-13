@@ -1,7 +1,12 @@
 {
-  "_comment": "火山引擎方舟 AI 配置。申请步骤见 README.md。填入你的 API Key 后重启服务器即可使用。",
+  "_comment": "AI 换衣配置。provider 可选：pollinations（完全免费，无需Key）/ ark（火山引擎Seedream，需API Key）/ siliconflow（硅基流动，需API Key，国内稳定）",
+  "provider": "pollinations",
   "arkApiKey": "",
-  "model": "doubao-seedream-4-5-251128",
-  "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+  "arkModel": "doubao-seedream-4-5-251128",
+  "arkBaseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+  "siliconFlowApiKey": "",
+  "siliconFlowModel": "stabilityai/stable-diffusion-xl-base-1.0",
+  "siliconFlowBaseUrl": "https://api.siliconflow.cn/v1/images/generations",
+  "pollinationsModel": "flux",
   "size": "1024x1024"
 }
