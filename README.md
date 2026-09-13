@@ -6,9 +6,10 @@
 
 - **仿真 3D 模特**：腾讯混元3D 由真人参考图生成，GLB 模型 + three.js 渲染，非卡通木偶
 - **性别切换**：男 / 女模型实时切换（另一性别后台预加载，切换无感）
-- **衣服试穿**：上传衣服图片，自动识别白色 T 恤区域（躯干 + 袖子），三平面映射贴合身体，可一键脱下
+- **四品类换装**：上衣 / 裤子 / 鞋子 / 帽子，上传图片或用 AI 生成，自动识别对应部位，三平面映射贴合身体，可一键脱下
+- **AI 换衣**：输入文字描述（如"蓝色牛仔夹克"），调用火山引擎 Seedream 生成衣服纹理图，自动穿到模特身上
 - **交互**：单指仅左右旋转（不上下翻转），双指缩放
-- **默认着装**：白色 T 恤 + 黑色牛仔裤
+- **默认着装**：白色 T 恤 + 黑色牛仔裤 + 白鞋，皮肤美白处理
 
 ## 技术栈
 
@@ -65,9 +66,26 @@ node preview/server.js
 
 ### 微信开发者工具运行
 
-1. 启动模型服务 `node preview/server.js`
+1. 启动模型服务 `node preview/server.js`（同时提供 AI 代理接口）
 2. 导入项目目录，构建 npm
 3. 勾选「不校验合法域名」，编译运行
+
+### AI 换衣配置（可选）
+
+AI 换衣通过本地服务器代理调用火山引擎方舟 Seedream 文生图 API，小程序端不暴露 API Key。
+
+**申请 API Key：**
+
+1. 注册并登录 [火山引擎控制台](https://console.volcengine.com/)，完成实名认证
+2. 开通「火山方舟」服务：https://console.volcengine.com/ark
+3. 在「API Key 管理」页面创建 API Key：https://console.volcengine.com/ark/region:ark+cn-beijing/apikey
+4. 在「模型广场」开通 Seedream 模型（推荐 `doubao-seedream-4-5-251128`）
+5. 把 API Key 填入 `config/ai-config.json` 的 `arkApiKey` 字段
+6. 重启 `node preview/server.js`
+
+**使用：** 在小程序底部输入衣服描述（如"蓝色条纹T恤"），选好部位，点「AI 生成」，生成的纹理图会自动穿到模特对应部位。
+
+> 上线时需把 AI 代理接口部署到 HTTPS 服务器，并在小程序后台配置 request 合法域名。
 
 ## 重新生成 / 压缩模型
 

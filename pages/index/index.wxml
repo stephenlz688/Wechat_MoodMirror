@@ -50,7 +50,20 @@
       <view class="btn ghost {{currentHasItem ? '' : 'disabled'}}" bindtap="onRemoveItem">脱下</view>
     </view>
 
-    <view class="tip">上传{{categoryLabel}}的平铺图或正面照，会自动穿到模特对应的部位。</view>
+    <view class="ai-row">
+      <input
+        class="ai-input"
+        placeholder="描述想要的{{categoryLabel}}，如「蓝色条纹T恤」"
+        value="{{aiPrompt}}"
+        bindinput="onAiInput"
+        confirm-type="done"
+      />
+      <view class="btn ai-btn {{aiGenerating ? 'disabled' : ''}}" bindtap="onAiGenerate">
+        {{aiGenerating ? '生成中…' : 'AI 生成'}}
+      </view>
+    </view>
+
+    <view class="tip">上传{{categoryLabel}}的平铺图或正面照，会自动穿到模特对应的部位；也可以用 AI 输入描述直接生成。</view>
   </view>
 
 </view>

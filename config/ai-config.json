@@ -1,0 +1,7 @@
+{
+  "_comment": "火山引擎方舟 AI 配置。申请步骤见 README.md。填入你的 API Key 后重启服务器即可使用。",
+  "arkApiKey": "",
+  "model": "doubao-seedream-4-5-251128",
+  "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+  "size": "1024x1024"
+}

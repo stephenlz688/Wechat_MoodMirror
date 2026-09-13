@@ -165,3 +165,34 @@
   color: #9aa1b5;
   line-height: 1.5;
 }
+
+.ai-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.ai-input {
+  flex: 1;
+  height: 64rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  color: #1f2430;
+  background: #f0f2f7;
+  border: 1rpx solid #e2e6ee;
+  border-radius: 14rpx;
+}
+
+.ai-btn {
+  background: linear-gradient(135deg, #7c6cff, #5b8cff);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 12rpx 28rpx;
+  white-space: nowrap;
+  box-shadow: 0 4rpx 12rpx rgba(108, 108, 255, 0.3);
+}
+
+.ai-btn.disabled {
+  opacity: 0.5;
+}

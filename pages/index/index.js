@@ -15,6 +15,8 @@ Page({
     currentCategory: 'shirt',
     categoryLabel: '上衣',
     currentHasItem: false,
+    aiPrompt: '',
+    aiGenerating: false,
     ready: false,
     loading: true,
     loadingText: '正在加载 3D 模特…',
@@ -272,6 +274,64 @@ Page({
     if (!this.human) return
     this.human.clearItem(this.data.currentCategory)
     this.setData({ currentHasItem: false })
+  },
+
+  // -------------------------------------------------------------------------
+  // AI 生成衣服纹理
+  // -------------------------------------------------------------------------
+  onAiInput(e) {
+    this.setData({ aiPrompt: e.detail.value })
+  },
+
+  onAiGenerate() {
+    if (!this.human || !this.data.ready) return
+    const prompt = (this.data.aiPrompt || '').trim()
+    if (!prompt) {
+      wx.showToast({ title: '先输入衣服描述', icon: 'none' })
+      return
+    }
+    const cat = this.data.currentCategory
+    this.setData({ aiGenerating: true })
+    wx.showLoading({ title: 'AI 生成中…', mask: true })
+
+    wx.request({
+      url: 'http://localhost:8642/api/ai-gen-cloth',
+      method: 'POST',
+      data: { category: cat, prompt },
+      success: (res) => {
+        wx.hideLoading()
+        this.setData({ aiGenerating: false })
+        if (res.data && res.data.error) {
+          wx.showToast({ title: res.data.error, icon: 'none', duration: 3000 })
+          return
+        }
+        if (!res.data || !res.data.url) {
+          wx.showToast({ title: '生成失败，请重试', icon: 'none' })
+          return
+        }
+        // 加载生成的图片为纹理并应用
+        const T = this.THREE
+        const loader = new T.TextureLoader()
+        loader.load(
+          res.data.url,
+          (texture) => {
+            texture.encoding = T.sRGBEncoding
+            texture.wrapS = T.RepeatWrapping
+            texture.wrapT = T.RepeatWrapping
+            this.human.setItem(cat, texture)
+            this.setData({ currentHasItem: true })
+            wx.showToast({ title: '已穿上', icon: 'success' })
+          },
+          undefined,
+          () => wx.showToast({ title: '图片加载失败', icon: 'none' })
+        )
+      },
+      fail: () => {
+        wx.hideLoading()
+        this.setData({ aiGenerating: false })
+        wx.showToast({ title: '网络错误，请确认本地服务器已启动', icon: 'none', duration: 3000 })
+      }
+    })
   },
 
   onUnload() {
