@@ -3,9 +3,18 @@
  *  - 加载混元3D 生成的男女 GLB（外部传入 GLTFLoader.parse，兼容浏览器/小程序）
  *  - 归一化：统一身高、脚底落地、水平居中
  *  - 性别切换
- *  - 换衣：识别白色 T 恤区域，叠加三平面映射的衣服纹理层
+ *  - 四品类换装：上衣 / 裤子 / 鞋子 / 帽子，各自识别区域并叠加三平面映射纹理层
+ *  - 皮肤美白层
  *  - 仅水平旋转（外部控制 group.rotation.y）
  */
+
+// 品类配置：顶点属性名 / 渲染顺序 / 外扩距离 / 纹理重复度
+const CATEGORIES = {
+  shirt: { attr: 'aShirt', renderOrder: 2, expand: 0.006, repeat: 2.2 },
+  pants: { attr: 'aPants', renderOrder: 2, expand: 0.002, repeat: 1.6 },
+  shoes: { attr: 'aShoes', renderOrder: 2, expand: 0.002, repeat: 3.0 },
+  hat:   { attr: 'aHat',   renderOrder: 3, expand: 0.003, repeat: 2.0 }
+}
 
 export class HumanModel {
   /**
@@ -13,7 +22,7 @@ export class HumanModel {
    * @param {object} scene 场景
    * @param {object} opts
    *   targetHeight 归一化身高（默认 1.7）
-   *   readImagePixels 可选，(image)=>{width,height,data:Uint8ClampedArray}，用于颜色识别 T 恤
+   *   readImagePixels 可选，(image)=>{width,height,data:Uint8ClampedArray}，用于颜色识别
    */
   constructor(THREE, scene, opts = {}) {
     this.T = THREE
@@ -25,14 +34,12 @@ export class HumanModel {
 
     this.models = { male: null, female: null }
     this.gender = 'male'
-    this.clothTexture = null
-    this.clothMaterial = null
+    this.textures = {} // { shirt: tex, pants: tex, shoes: tex, hat: tex }
     this.loaded = { male: false, female: false }
   }
 
   // ----------------------------------------------------------------------
   // 加载 GLB
-  //  parseBuffer: (arrayBuffer) => Promise<gltfScene>
   // ----------------------------------------------------------------------
   async addGender(gender, arrayBuffer, parseBuffer) {
     const gltfScene = await parseBuffer(arrayBuffer)
@@ -43,7 +50,10 @@ export class HumanModel {
     this.loaded[gender] = true
     this.group.add(model)
     this._applySkinToModel(model)
-    if (this.clothTexture) this._applyClothToModel(model, this.clothTexture)
+    // 应用已有的各品类纹理
+    Object.entries(this.textures).forEach(([cat, tex]) => {
+      if (tex) this._applyOverlayToModel(model, cat, tex)
+    })
     return model
   }
 
@@ -74,15 +84,11 @@ export class HumanModel {
   }
 
   // ----------------------------------------------------------------------
-  // 识别 T 恤区域，写入 aShirt 顶点属性（1=T恤，0=其他）
+  // 识别上衣/裤子/鞋子/帽子/皮肤区域，写入对应顶点属性
   // ----------------------------------------------------------------------
-  // 识别 T 恤与皮肤区域，分别写入 aShirt / aSkin 顶点属性
   _tagAreas(model) {
     const T = this.T
     const H = this.targetHeight
-    // T 恤所在的世界高度区间
-    const yLow = H * 0.52
-    const yHigh = H * 0.86
 
     model.updateMatrixWorld(true)
     const tmp = new T.Vector3()
@@ -94,6 +100,9 @@ export class HumanModel {
       if (!pos) return
       const count = pos.count
       const shirt = new Float32Array(count)
+      const pants = new Float32Array(count)
+      const shoes = new Float32Array(count)
+      const hat = new Float32Array(count)
       const skin = new Float32Array(count)
 
       const mat = mesh.material
@@ -104,16 +113,15 @@ export class HumanModel {
         try { pixels = this.opts.readImagePixels(texImage) } catch (e) { pixels = null }
       }
       const uv = geo.attributes.uv
-      let shirtCount = 0, skinCount = 0
+      const counts = { shirt: 0, pants: 0, shoes: 0, hat: 0, skin: 0 }
 
       for (let i = 0; i < count; i++) {
         tmp.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mesh.matrixWorld)
         const wx = tmp.x, wy = tmp.y
 
-        // ---- T 恤 ----
+        // ---- 上衣（T 恤）----
         let isShirt = false
-        const inShirtHeight = wy > yLow && wy < yHigh
-        if (inShirtHeight) {
+        if (wy > H * 0.52 && wy < H * 0.86) {
           const coreTorso = Math.abs(wx) < 0.17 && !(Math.abs(wx) < 0.07 && wy > H * 0.80)
           if (pixels && uv) {
             const c = this._samplePixel(pixels, uv, i)
@@ -127,29 +135,52 @@ export class HumanModel {
             isShirt = torso || arm
           }
         }
-        shirt[i] = isShirt ? 1 : 0
-        if (isShirt) shirtCount++
+        if (isShirt) { shirt[i] = 1; counts.shirt++; continue }
 
-        // ---- 皮肤（脸/脖子/手臂/手）----
-        if (!isShirt && wy > H * 0.40) {
+        // ---- 裤子（位置 + 深色判定，排除肤色手臂；核心腿部强制覆盖）----
+        if (wy > H * 0.05 && wy < H * 0.55 && Math.abs(wx) < 0.30) {
+          const coreLeg = Math.abs(wx) < 0.16
+          let isDark = true
           if (pixels && uv) {
             const c = this._samplePixel(pixels, uv, i)
-            // 肤色：暖调 R>G>B，亮度中高，排除高亮(白T/鞋)与暗部(头发/裤)
+            isDark = Math.max(c.r, c.g, c.b) < 0.58
+          }
+          if (isDark || coreLeg) { pants[i] = 1; counts.pants++; continue }
+        }
+
+        // ---- 鞋子（脚底区域）----
+        if (wy < H * 0.10) { shoes[i] = 1; counts.shoes++; continue }
+
+        // ---- 帽子（头顶，排除脸）----
+        let isHat = false
+        if (wy > H * 0.91 && Math.abs(wx) < 0.14) {
+          if (pixels && uv) {
+            const c = this._samplePixel(pixels, uv, i)
+            const isSkinColor = c.r > c.g + 0.005 && c.g > c.b + 0.005 && (c.r - c.b) > 0.03 && c.r > 0.28
+            if (!isSkinColor) isHat = true
+          } else {
+            isHat = wy > H * 0.93
+          }
+        }
+        if (isHat) { hat[i] = 1; counts.hat++; continue }
+
+        // ---- 皮肤（脸/脖子/手臂/手）----
+        if (wy > H * 0.40) {
+          if (pixels && uv) {
+            const c = this._samplePixel(pixels, uv, i)
             const warm = c.r > c.g + 0.005 && c.g > c.b + 0.005
             const midLight = c.r > 0.28 && c.r < 0.98
             const notBright = Math.min(c.r, c.g, c.b) < 0.90
             const notDark = Math.max(c.r, c.g, c.b) > 0.20
             const reddish = (c.r - c.b) > 0.03
             if (warm && midLight && notBright && notDark && reddish) {
-              skin[i] = 1
-              skinCount++
+              skin[i] = 1; counts.skin++
             }
           } else {
-            // 兜底：脸+脖子+手臂区域
             const face = wy > H * 0.84 && Math.abs(wx) < 0.13
             const neck = wy > H * 0.78 && wy < H * 0.86 && Math.abs(wx) < 0.08
             const arm = Math.abs(wx) > 0.18 && Math.abs(wx) < 0.36 && wy > H * 0.42
-            if (face || neck || arm) { skin[i] = 1; skinCount++ }
+            if (face || neck || arm) { skin[i] = 1; counts.skin++ }
           }
         }
       }
@@ -160,9 +191,11 @@ export class HumanModel {
         else geo.addAttribute(name, attr)
       }
       setAttr('aShirt', shirt)
+      setAttr('aPants', pants)
+      setAttr('aShoes', shoes)
+      setAttr('aHat', hat)
       setAttr('aSkin', skin)
-      mesh.userData.shirtCount = shirtCount
-      mesh.userData.skinCount = skinCount
+      mesh.userData.areaCounts = counts
       mesh.userData.totalCount = count
       mesh.userData.hasPixels = !!pixels
     })
@@ -182,26 +215,27 @@ export class HumanModel {
   }
 
   // ----------------------------------------------------------------------
-  // 衣服叠加层
+  // 品类叠加层（上衣/裤子/鞋子/帽子通用）
   // ----------------------------------------------------------------------
-  _buildClothMaterial() {
+  _buildOverlayMaterial(category) {
     const T = this.T
+    const cfg = CATEGORIES[category]
     return new T.ShaderMaterial({
       transparent: true,
-      depthWrite: true,
+      depthWrite: category === 'pants' ? false : true,
       uniforms: {
         uTex: { value: null },
-        uRepeat: { value: 2.2 },
-        uExpand: { value: 0.006 }
+        uRepeat: { value: cfg.repeat },
+        uExpand: { value: cfg.expand }
       },
       vertexShader: `
-        attribute float aShirt;
-        varying float vShirt;
+        attribute float ${cfg.attr};
+        varying float vMask;
         varying vec3 vPos;
         varying vec3 vNrm;
         uniform float uExpand;
         void main() {
-          vShirt = aShirt;
+          vMask = ${cfg.attr};
           vec3 p = position + normal * uExpand;
           vPos = (modelMatrix * vec4(p, 1.0)).xyz;
           vNrm = normalize(mat3(modelMatrix) * normal);
@@ -211,11 +245,11 @@ export class HumanModel {
       fragmentShader: `
         uniform sampler2D uTex;
         uniform float uRepeat;
-        varying float vShirt;
+        varying float vMask;
         varying vec3 vPos;
         varying vec3 vNrm;
         void main() {
-          float mask = smoothstep(0.4, 0.6, vShirt);
+          float mask = smoothstep(0.4, 0.6, vMask);
           if (mask < 0.02) discard;
           vec3 n = normalize(vNrm);
           vec3 cx = texture2D(uTex, vPos.zy * uRepeat).rgb;
@@ -225,37 +259,40 @@ export class HumanModel {
           float ws = w.x + w.y + w.z + 1e-5;
           w /= ws;
           vec3 col = cx * w.x + cy * w.y + cz * w.z;
-          // 简单明暗，跟随法线
-          float shade = 0.82 + 0.18 * max(dot(n, normalize(vec3(0.4,1.0,0.6))), 0.0);
+          float shade = 0.82 + 0.18 * max(dot(n, normalize(vec3(0.4, 1.0, 0.6))), 0.0);
           gl_FragColor = vec4(col * shade, mask);
         }
       `
     })
   }
 
-  _applyClothToModel(model, texture) {
+  _applyOverlayToModel(model, category, texture) {
     const T = this.T
+    const cfg = CATEGORIES[category]
+    const layerKey = category + 'Layer'
+    const matKey = category + 'Mat'
     model.traverse((mesh) => {
-      if (!mesh.isMesh || mesh.userData.isClothLayer) return
-      if (!mesh.geometry || !mesh.geometry.attributes.aShirt) return
-      if (!mesh.userData.clothLayer) {
-        const mat = this._buildClothMaterial()
+      if (!mesh.isMesh || mesh.userData.isOverlayLayer || mesh.userData.isSkinLayer) return
+      if (!mesh.geometry || !mesh.geometry.attributes[cfg.attr]) return
+      if (!mesh.userData[layerKey]) {
+        const mat = this._buildOverlayMaterial(category)
         const layer = new T.Mesh(mesh.geometry, mat)
-        layer.renderOrder = 2
-        layer.userData.isClothLayer = true
+        layer.renderOrder = cfg.renderOrder
+        layer.userData.isOverlayLayer = true
+        layer.userData.category = category
         layer.matrixAutoUpdate = false
         layer.matrix.identity()
         mesh.add(layer)
-        mesh.userData.clothLayer = layer
-        mesh.userData.clothMat = mat
+        mesh.userData[layerKey] = layer
+        mesh.userData[matKey] = mat
       }
-      mesh.userData.clothMat.uniforms.uTex.value = texture
-      mesh.userData.clothLayer.visible = true
+      mesh.userData[matKey].uniforms.uTex.value = texture
+      mesh.userData[layerKey].visible = true
     })
   }
 
   // ----------------------------------------------------------------------
-  // 皮肤美白层：在肤色区域叠加一层浅白暖肤色，提亮肤色
+  // 皮肤美白层
   // ----------------------------------------------------------------------
   _buildSkinMaterial() {
     const T = this.T
@@ -298,7 +335,7 @@ export class HumanModel {
   _applySkinToModel(model) {
     const T = this.T
     model.traverse((mesh) => {
-      if (!mesh.isMesh || mesh.userData.isClothLayer || mesh.userData.isSkinLayer) return
+      if (!mesh.isMesh || mesh.userData.isOverlayLayer || mesh.userData.isSkinLayer) return
       if (!mesh.geometry || !mesh.geometry.attributes.aSkin) return
       if (!mesh.userData.skinLayer) {
         const mat = this._buildSkinMaterial()
@@ -314,28 +351,43 @@ export class HumanModel {
     })
   }
 
-  setCloth(texture) {
-    this.clothTexture = texture
+  // ----------------------------------------------------------------------
+  // 对外 API
+  // ----------------------------------------------------------------------
+
+  /** 设置某个品类的纹理；category: shirt/pants/shoes/hat */
+  setItem(category, texture) {
+    if (!CATEGORIES[category]) return
+    this.textures[category] = texture
     Object.values(this.models).forEach((m) => {
-      if (m) this._applyClothToModel(m, texture)
+      if (m) this._applyOverlayToModel(m, category, texture)
     })
   }
 
-  clearCloth() {
-    this.clothTexture = null
-    Object.values(this.models).forEach((model) => {
-      if (!model) return
-      model.traverse((mesh) => {
-        if (mesh.userData && mesh.userData.clothLayer) {
-          mesh.userData.clothLayer.visible = false
+  /** 脱下某个品类 */
+  clearItem(category) {
+    if (!CATEGORIES[category]) return
+    this.textures[category] = null
+    const layerKey = category + 'Layer'
+    Object.values(this.models).forEach((m) => {
+      if (!m) return
+      m.traverse((mesh) => {
+        if (mesh.userData && mesh.userData[layerKey]) {
+          mesh.userData[layerKey].visible = false
         }
       })
     })
   }
 
-  get clothed() {
-    return this.clothTexture !== null
+  /** 某个品类是否已穿着 */
+  hasItem(category) {
+    return !!this.textures[category]
   }
+
+  // 向后兼容：上衣别名
+  setCloth(texture) { this.setItem('shirt', texture) }
+  clearCloth() { this.clearItem('shirt') }
+  get clothed() { return this.hasItem('shirt') }
 
   // ----------------------------------------------------------------------
   setGender(gender) {

@@ -3,7 +3,7 @@
   <!-- 顶部状态栏 -->
   <view class="status-bar" style="padding-top: {{statusBarHeight}}px;">
     <view class="title">衣镜 · 3D 试衣</view>
-    <view class="hint">{{gender === 'male' ? '男性' : '女性'}} · {{clothed ? '已穿上衣' : '白T黑裤'}} · 左右拖动旋转，双指缩放</view>
+    <view class="hint">{{gender === 'male' ? '男性' : '女性'}} · 当前编辑：{{categoryLabel}} · 左右拖动旋转，双指缩放</view>
   </view>
 
   <!-- 3D 舞台 -->
@@ -35,12 +35,22 @@
     </view>
 
     <view class="row">
-      <text class="label">衣服</text>
-      <view class="btn primary" bindtap="onChooseCloth">上传衣服图片</view>
-      <view class="btn ghost {{clothed ? '' : 'disabled'}}" bindtap="onResetCloth">脱下</view>
+      <text class="label">部位</text>
+      <view class="seg seg-wide">
+        <view class="seg-item {{currentCategory === 'shirt' ? 'active' : ''}}" data-cat="shirt" bindtap="onCategoryChange">上衣</view>
+        <view class="seg-item {{currentCategory === 'pants' ? 'active' : ''}}" data-cat="pants" bindtap="onCategoryChange">裤子</view>
+        <view class="seg-item {{currentCategory === 'shoes' ? 'active' : ''}}" data-cat="shoes" bindtap="onCategoryChange">鞋子</view>
+        <view class="seg-item {{currentCategory === 'hat' ? 'active' : ''}}" data-cat="hat" bindtap="onCategoryChange">帽子</view>
+      </view>
     </view>
 
-    <view class="tip">上传衣服的平铺图或正面照，会自动穿到模特身上（躯干 + 袖子）。</view>
+    <view class="row">
+      <text class="label">{{categoryLabel}}</text>
+      <view class="btn primary" bindtap="onChooseItem">上传{{categoryLabel}}图片</view>
+      <view class="btn ghost {{currentHasItem ? '' : 'disabled'}}" bindtap="onRemoveItem">脱下</view>
+    </view>
+
+    <view class="tip">上传{{categoryLabel}}的平铺图或正面照，会自动穿到模特对应的部位。</view>
   </view>
 
 </view>

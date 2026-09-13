@@ -131,6 +131,11 @@
   box-shadow: 0 6rpx 16rpx rgba(108, 108, 255, 0.35);
 }
 
+.seg-wide .seg-item {
+  padding: 10rpx 22rpx;
+  font-size: 24rpx;
+}
+
 .btn {
   padding: 12rpx 32rpx;
   font-size: 26rpx;

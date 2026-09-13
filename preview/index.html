@@ -53,7 +53,14 @@
       <button id="btnMale" class="active">男性</button>
       <button id="btnFemale">女性</button>
     </div>
-    <button id="btnCloth" class="btn primary" disabled>上传衣服图片</button>
+    <span class="label">部位</span>
+    <div class="seg" id="catSeg">
+      <button data-cat="shirt" class="active">上衣</button>
+      <button data-cat="pants">裤子</button>
+      <button data-cat="shoes">鞋子</button>
+      <button data-cat="hat">帽子</button>
+    </div>
+    <button id="btnUpload" class="btn primary" disabled>上传图片</button>
     <button id="btnReset" class="btn ghost" disabled>脱下</button>
     <input type="file" id="file" accept="image/*">
   </div>
@@ -112,6 +119,19 @@
   async function loadAll() {
     const query = new URLSearchParams(location.search)
     const order = query.get('gender') === 'female' ? ['female', 'male'] : ['male', 'female']
+
+    // debug 模式：提前设置纯色纹理，每个模型加载完自动应用
+    if (query.get('debug')) {
+      const makeTex = (r, g, b) => {
+        const c = document.createElement('canvas'); c.width = 16; c.height = 16
+        const ctx = c.getContext('2d'); ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(0, 0, 16, 16)
+        const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t
+      }
+      human.setItem('shirt', makeTex(220, 60, 60))
+      human.setItem('pants', makeTex(60, 180, 60))
+      human.setItem('shoes', makeTex(60, 60, 200))
+      human.setItem('hat', makeTex(220, 200, 40))
+    }
     window.__dbg = []
     for (const g of order) {
       try {
@@ -132,7 +152,7 @@
       }
     }
     loading.style.display = 'none'
-    $('btnCloth').disabled = false
+    $('btnUpload').disabled = false
     updateHint()
   }
   window.addEventListener('error', (e) => {
@@ -167,20 +187,30 @@
     updateHint()
   }
 
-  // 衣服
-  $('btnCloth').addEventListener('click', () => $('file').click())
+  // 品类切换
+  let currentCat = 'shirt'
+  $('catSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-cat]')
+    if (!btn) return
+    currentCat = btn.dataset.cat
+    $('catSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn))
+    $('btnReset').disabled = !human.hasItem(currentCat)
+  })
+
+  // 上传当前品类
+  $('btnUpload').addEventListener('click', () => $('file').click())
   $('file').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return
     new THREE.TextureLoader().load(URL.createObjectURL(f), (tex) => {
       tex.encoding = THREE.sRGBEncoding
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      human.setCloth(tex)
+      human.setItem(currentCat, tex)
       $('btnReset').disabled = false
-      updateHint()
     }, undefined, () => alert('图片加载失败，请换一张'))
   })
   $('btnReset').addEventListener('click', () => {
-    human.clearCloth(); $('btnReset').disabled = true; updateHint()
+    human.clearItem(currentCat)
+    $('btnReset').disabled = true
   })
 
   // URL ?cloth=auto 自动上测试条纹衣

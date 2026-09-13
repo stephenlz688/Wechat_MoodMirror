@@ -12,7 +12,9 @@ import { CONFIG } from '../../utils/config'
 Page({
   data: {
     gender: 'male',
-    clothed: false,
+    currentCategory: 'shirt',
+    categoryLabel: '上衣',
+    currentHasItem: false,
     ready: false,
     loading: true,
     loadingText: '正在加载 3D 模特…',
@@ -49,9 +51,6 @@ Page({
         const width = rect.width || 300
         const height = rect.height || 400
 
-        canvas.width = Math.floor(width * dpr)
-        canvas.height = Math.floor(height * dpr)
-
         const THREE = createScopedThreejs(canvas)
         registerGLTFLoader(THREE) // 挂载 THREE.GLTFLoader
 
@@ -59,6 +58,7 @@ Page({
         const renderer = new THREE.WebGLRenderer({ canvas, context: gl, antialias: true, alpha: true })
         renderer.setPixelRatio(dpr)
         // 第三参 false：不更新 canvas.style（避免微信 this._getData 渲染层错误）
+        // canvas.width/height 由 setSize 统一设置，避免重复修改触发渲染层异常
         renderer.setSize(width, height, false)
         renderer.outputEncoding = THREE.sRGBEncoding
         renderer.setClearColor(0x000000, 0)
@@ -224,10 +224,25 @@ Page({
   },
 
   // -------------------------------------------------------------------------
-  // 衣服：选择图片 → 叠加到 T 恤
+  // 品类切换
   // -------------------------------------------------------------------------
-  onChooseCloth() {
+  onCategoryChange(e) {
+    const cat = e.currentTarget.dataset.cat
+    if (!cat || cat === this.data.currentCategory) return
+    const labelMap = { shirt: '上衣', pants: '裤子', shoes: '鞋子', hat: '帽子' }
+    this.setData({
+      currentCategory: cat,
+      categoryLabel: labelMap[cat] || cat,
+      currentHasItem: this.human ? this.human.hasItem(cat) : false
+    })
+  },
+
+  // -------------------------------------------------------------------------
+  // 上传当前品类的图片 → 叠加到对应区域
+  // -------------------------------------------------------------------------
+  onChooseItem() {
     if (!this.human || !this.data.ready) return
+    const cat = this.data.currentCategory
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -242,8 +257,8 @@ Page({
             texture.encoding = T.sRGBEncoding
             texture.wrapS = T.RepeatWrapping
             texture.wrapT = T.RepeatWrapping
-            this.human.setCloth(texture)
-            this.setData({ clothed: true })
+            this.human.setItem(cat, texture)
+            this.setData({ currentHasItem: true })
           },
           undefined,
           () => wx.showToast({ title: '图片加载失败，请换一张', icon: 'none' })
@@ -252,10 +267,11 @@ Page({
     })
   },
 
-  onResetCloth() {
+  // 脱下当前品类
+  onRemoveItem() {
     if (!this.human) return
-    this.human.clearCloth()
-    this.setData({ clothed: false })
+    this.human.clearItem(this.data.currentCategory)
+    this.setData({ currentHasItem: false })
   },
 
   onUnload() {
